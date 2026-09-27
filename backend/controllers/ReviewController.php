@@ -257,8 +257,11 @@ class ReviewController {
                 return Response::error('Không tìm thấy review', 404);
             }
             
-            // Check ownership
-            if ($review['user_id'] != $user['user_id']) {
+            // Check ownership (Admin can edit any review)
+            $authRole = $_REQUEST['auth_user_role'] ?? null;
+            $authRoleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
+            $isAdmin = ($authRole === 'Admin' || $authRoleId === 5 || ((int)($user['role_id'] ?? 0)) === 5);
+            if (!$isAdmin && $review['user_id'] != $user['user_id']) {
                 return Response::error('Bạn không có quyền sửa review này', 403);
             }
             

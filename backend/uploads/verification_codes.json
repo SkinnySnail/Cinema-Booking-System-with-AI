@@ -9,5 +9,11 @@
             "password": "password"
         },
         "expires_at": 1775114971
+    },
+    "tuantai1915@gmail.com": {
+        "type": "reset_password",
+        "code": "289001",
+        "user_id": 7,
+        "expires_at": 1790518075
     }
 }

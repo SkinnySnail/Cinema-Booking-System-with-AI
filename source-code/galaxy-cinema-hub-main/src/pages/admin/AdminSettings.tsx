@@ -9,8 +9,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Save, Clock, Shield, TrendingUp, Award, Loader2 } from "lucide-react";
+import { Save, Clock, Shield, ShieldAlert, TrendingUp, Award, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AppContext";
 import { systemConfig } from "@/data/mockData";
 import { SystemConfig } from "@/types/cinema";
 import { apiCall, API_ENDPOINTS } from "@/lib/api";
@@ -18,7 +19,21 @@ import { apiCall, API_ENDPOINTS } from "@/lib/api";
 import { AdminHeroBanner } from "@/components/admin/AdminHeroBanner";
 
 const AdminSettings: React.FC = () => {
+  const { user } = useAuth();
   const { toast } = useToast();
+
+  const isSuperAdmin =
+    user?.id === "1" ||
+    (user as any)?.id === 1 ||
+    user?.email === "admin@galaxy.vn" ||
+    (user as any)?.role_id === 5 ||
+    (user as any)?.roles?.some((r: any) => r.id === 5 || r.code === "SYSTEM_ADMIN");
+
+  const hasSettingsPerm =
+    isSuperAdmin ||
+    (Array.isArray((user as any)?.permissions) &&
+      (user as any).permissions.includes("system.settings"));
+
   const [config, setConfig] = useState<SystemConfig>(systemConfig);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -27,9 +42,28 @@ const AdminSettings: React.FC = () => {
   const [dbTiers, setDbTiers] = useState<any[]>([]);
 
   useEffect(() => {
-    fetchSettings();
-    fetchMemberships();
-  }, []);
+    if (hasSettingsPerm) {
+      fetchSettings();
+      fetchMemberships();
+    }
+  }, [hasSettingsPerm]);
+
+  if (!hasSettingsPerm) {
+    return (
+      <div className="p-8 max-w-xl mx-auto text-center space-y-4 pt-20">
+        <div className="w-16 h-16 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-foreground">Không có quyền truy cập</h2>
+        <p className="text-muted-foreground text-sm leading-relaxed">
+          Tài khoản <strong>{user?.email}</strong> thuộc vai trò tùy chỉnh không được cấp quyền quản lý cấu hình hệ thống (<code>system.settings</code>).
+        </p>
+        <Button onClick={() => window.history.back()} variant="outline" className="mt-2">
+          Quay lại trang trước
+        </Button>
+      </div>
+    );
+  }
 
   const fetchSettings = async () => {
     try {

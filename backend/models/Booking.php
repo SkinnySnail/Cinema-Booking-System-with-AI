@@ -225,11 +225,19 @@ class Booking {
                     GROUP BY booking_id
                 ) latest ON latest.max_id = t1.id
              ) tx ON tx.booking_id = b.id
-             WHERE b.user_id = :user_id
+             WHERE (b.user_id = :user_id OR (b.guest_customer_id IS NOT NULL AND b.guest_customer_id IN (
+                 SELECT pc.id FROM pos_customers pc
+                 INNER JOIN user_profiles up ON (
+                     up.phone = pc.phone 
+                     OR REPLACE(REPLACE(REPLACE(up.phone, ' ', ''), '.', ''), '-', '') = REPLACE(REPLACE(REPLACE(pc.phone, ' ', ''), '.', ''), '-', '')
+                 )
+                 WHERE up.user_id = :user_id_sub
+             )))
              ORDER BY b.created_at DESC
              LIMIT :limit OFFSET :offset"
         );
         $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':user_id_sub', $userId, PDO::PARAM_INT);
         $stmt->bindValue(':limit', (int)$limit, PDO::PARAM_INT);
         $stmt->bindValue(':offset', (int)$offset, PDO::PARAM_INT);
         $stmt->execute();
@@ -304,8 +312,21 @@ class Booking {
     }
 
     public function countUserBookings($userId) {
-        $stmt = $this->db->prepare("SELECT COUNT(*) AS total FROM bookings WHERE user_id = :user_id");
-        $stmt->execute([':user_id' => $userId]);
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(DISTINCT b.id) AS total
+             FROM bookings b
+             WHERE (b.user_id = :user_id OR (b.guest_customer_id IS NOT NULL AND b.guest_customer_id IN (
+                 SELECT pc.id FROM pos_customers pc
+                 INNER JOIN user_profiles up ON (
+                     up.phone = pc.phone 
+                     OR REPLACE(REPLACE(REPLACE(up.phone, ' ', ''), '.', ''), '-', '') = REPLACE(REPLACE(REPLACE(pc.phone, ' ', ''), '.', ''), '-', '')
+                 )
+                 WHERE up.user_id = :user_id_sub
+             )))"
+        );
+        $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':user_id_sub', $userId, PDO::PARAM_INT);
+        $stmt->execute();
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return (int)$row['total'];
     }

@@ -105,7 +105,7 @@ class Router
                         if (method_exists($controllerInstance, $handlerMethod)) {
                             return call_user_func_array(
                                 [$controllerInstance, $handlerMethod],
-                                $params
+                                array_values($params)
                             );
                         }
                     }

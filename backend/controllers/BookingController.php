@@ -278,12 +278,28 @@ class BookingController extends BaseController {
         AuthMiddleware::requirePermission('bookings.pos');
 
         $authRole = $_REQUEST['auth_user_role'] ?? null;
-        if (!in_array($authRole, ['Admin', 'Manager', 'Staff'], true)) {
-            Response::forbidden('Insufficient permissions');
+        $authRoleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
+        $roleLower = strtolower((string)($authRole ?? ''));
+        if ($roleLower !== 'admin' && $authRoleId !== 5 && !in_array($roleLower, ['manager', 'staff'], true) && !in_array($authRoleId, [3, 4], true)) {
+            $userId = (int)($_REQUEST['auth_user_id'] ?? 0);
+            $isStaffGroup = false;
+            if ($userId > 0) {
+                try {
+                    $db = Database::getInstance()->getConnection();
+                    $stmtCheck = $db->prepare("SELECT COUNT(*) FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = :uid AND r.base_role IN ('staff', 'manager', 'admin')");
+                    $stmtCheck->execute([':uid' => $userId]);
+                    if ((int)$stmtCheck->fetchColumn() > 0) {
+                        $isStaffGroup = true;
+                    }
+                } catch (Exception $e) {}
+            }
+            if (!$isStaffGroup) {
+                Response::forbidden('Insufficient permissions');
+            }
         }
         
         $cinemaId = null;
-        if ($authRole === 'Staff' || $authRole === 'Manager') {
+        if ($roleLower !== 'admin' && $authRoleId !== 5) {
             $cinemaId = $this->getStaffCinemaId();
         }
 
@@ -378,11 +394,13 @@ class BookingController extends BaseController {
         $stmt = $this->db->prepare(
             "SELECT u.id
              FROM pos_customers pc
-             INNER JOIN user_profiles up ON up.phone = pc.phone
+             INNER JOIN user_profiles up ON (
+                 up.phone = pc.phone 
+                 OR REPLACE(REPLACE(REPLACE(up.phone, ' ', ''), '.', ''), '-', '') = REPLACE(REPLACE(REPLACE(pc.phone, ' ', ''), '.', ''), '-', '')
+             )
              INNER JOIN users u ON u.id = up.user_id
              WHERE pc.id = :guest_customer_id
                AND u.status = 'Active'
-               AND u.role_id NOT IN (3, 4, 5)
              LIMIT 1"
         );
         $stmt->execute([':guest_customer_id' => $guestCustomerId]);
@@ -398,8 +416,9 @@ class BookingController extends BaseController {
     private function authorizeBookingAccess($booking) {
         $authUserId = (int)($_REQUEST['auth_user_id'] ?? 0);
         $authRole = $_REQUEST['auth_user_role'] ?? null;
+        $authRoleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
 
-        if ($authRole === 'Admin' || $authRole === 'Manager' || $authRole === 'Staff') {
+        if ($authRole === 'Admin' || $authRoleId === 5 || $authRole === 'Manager' || $authRoleId === 4 || $authRole === 'Staff' || $authRoleId === 3) {
             return;
         }
 

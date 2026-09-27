@@ -50,7 +50,31 @@ class ManagerController extends BaseController
         $userId = $this->getCurrentUserId();
         if (!$userId) return null;
 
-        $stmt = $this->db->prepare("SELECT id FROM cinemas WHERE manager_id = :uid LIMIT 1");
+        $roleName = (string)($_REQUEST['auth_user_role'] ?? '');
+        $roleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
+        $isAdmin = ($roleId === 5 || strtolower($roleName) === 'admin');
+
+        if ($isAdmin) {
+            $cinemaIdParam = $_GET['cinema_id'] ?? $_POST['cinema_id'] ?? $_REQUEST['cinema_id'] ?? null;
+            if ($cinemaIdParam && is_numeric($cinemaIdParam)) {
+                return (int)$cinemaIdParam;
+            }
+            $stmt = $this->db->prepare("SELECT id FROM cinemas WHERE manager_id = :uid LIMIT 1");
+            $stmt->execute([':uid' => $userId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row) return (int)$row['id'];
+
+            $first = $this->db->query("SELECT id FROM cinemas ORDER BY id ASC LIMIT 1")->fetch(\PDO::FETCH_ASSOC);
+            return $first ? (int)$first['id'] : null;
+        }
+
+        $stmt = $this->db->prepare("
+            SELECT COALESCE(cs.cinema_id, c.id) as id 
+            FROM users u
+            LEFT JOIN cinema_staff cs ON cs.user_id = u.id
+            LEFT JOIN cinemas c ON c.manager_id = u.id
+            WHERE u.id = :uid LIMIT 1
+        ");
         $stmt->execute([':uid' => $userId]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return $row ? (int) $row['id'] : null;
@@ -584,6 +608,7 @@ class ManagerController extends BaseController
     public function getStaff(): void
     {
         $cinemaId = $this->requireManagerCinema();
+        AuthMiddleware::requirePermission('users.view_all');
         try {
             $search = trim($_GET['search'] ?? '');
             $status = trim($_GET['status'] ?? '');
@@ -656,11 +681,12 @@ class ManagerController extends BaseController
     public function createStaff(): void
     {
         $cinemaId = $this->requireManagerCinema();
+        AuthMiddleware::requirePermission('users.create');
         try {
             $input = json_decode(file_get_contents('php://input'), true) ?: [];
 
-            foreach (['email','password','full_name','phone'] as $f) {
-                if (empty($input[$f])) Response::error("Thiếu trường: $f", 400);
+            foreach (['email','full_name','phone','dob'] as $f) {
+                if (empty($input[$f])) Response::error("Thiếu trường bắt buộc: $f", 400);
             }
 
             $email = filter_var($input['email'], FILTER_SANITIZE_EMAIL);
@@ -677,9 +703,20 @@ class ManagerController extends BaseController
             $phoneCheck->execute([':phone' => $phone]);
             if ($phoneCheck->fetchColumn()) Response::error('Số điện thoại đã được sử dụng', 409);
 
-            if (strlen($input['password']) < 6) Response::error('Mật khẩu phải có ít nhất 6 ký tự', 400);
+            // Default password = DOB in ddmmyyyy format (same as Admin) if password not explicitly provided
+            if (!empty($input['password'])) {
+                if (strlen($input['password']) < 6) Response::error('Mật khẩu phải có ít nhất 6 ký tự', 400);
+                $rawPassword = $input['password'];
+            } else {
+                try {
+                    $dobObj = new \DateTime($input['dob']);
+                    $rawPassword = $dobObj->format('dmY');
+                } catch (\Exception $e) {
+                    Response::error('Ngày sinh không hợp lệ', 400);
+                }
+            }
 
-            $hash = password_hash($input['password'], PASSWORD_BCRYPT, ['cost' => 10]);
+            $hash = password_hash($rawPassword, PASSWORD_BCRYPT, ['cost' => 10]);
 
             $this->db->beginTransaction();
 
@@ -688,9 +725,14 @@ class ManagerController extends BaseController
             $uStmt->execute([':email' => $email, ':hash' => $hash]);
             $userId = (int)$this->db->lastInsertId();
 
-            // Create user profile
-            $pStmt = $this->db->prepare("INSERT INTO user_profiles (user_id, full_name, phone, membership_id) VALUES (:uid,:name,:phone,1)");
-            $pStmt->execute([':uid' => $userId, ':name' => trim((string)$input['full_name']), ':phone' => $phone]);
+            // Create user profile with dob
+            $pStmt = $this->db->prepare("INSERT INTO user_profiles (user_id, full_name, phone, dob, membership_id) VALUES (:uid,:name,:phone,:dob,1)");
+            $pStmt->execute([
+                ':uid'   => $userId,
+                ':name'  => trim((string)$input['full_name']),
+                ':phone' => $phone,
+                ':dob'   => !empty($input['dob']) ? $input['dob'] : null,
+            ]);
 
             // Link staff to this cinema via cinema_staff
             $csStmt = $this->db->prepare("INSERT IGNORE INTO cinema_staff (cinema_id, user_id, created_at) VALUES (:cid,:uid,NOW())");
@@ -707,6 +749,7 @@ class ManagerController extends BaseController
     public function updateStaff(int $id): void
     {
         $cinemaId = $this->requireManagerCinema();
+        AuthMiddleware::requirePermission('users.update_all');
         try {
             // Verify staff belongs to this cinema
             $check = $this->db->prepare("
@@ -777,6 +820,7 @@ class ManagerController extends BaseController
     public function toggleStaffStatus(int $id): void
     {
         $cinemaId = $this->requireManagerCinema();
+        AuthMiddleware::requirePermission('users.update_all');
         try {
             // Verify staff belongs to this cinema via cinema_staff
             $check = $this->db->prepare("
@@ -804,6 +848,7 @@ class ManagerController extends BaseController
     public function importStaff(): void
     {
         $cinemaId = $this->requireManagerCinema();
+        AuthMiddleware::requirePermission('users.create');
         try {
             $input = json_decode(file_get_contents('php://input'), true);
 
@@ -1336,5 +1381,164 @@ class ManagerController extends BaseController
             Response::serverError('Lỗi cập nhật tồn kho: ' . $e->getMessage());
         }
     }
+
+    /**
+     * POST /api/manager/concessions/import
+     * Nhập hàng hoặc cập nhật tồn kho bắp nước từ Excel
+     * Body: {
+     *   "items": [
+     *     {
+     *       "name": "Combo 1",
+     *       "quantity": 50,
+     *       "mode": "add"|"set",
+     *       "price": 75000,
+     *       "category": "combo",
+     *       "image_url": "..."
+     *     }
+     *   ],
+     *   "default_mode": "set"|"add"
+     * }
+     */
+    public function importConcessions(): void
+    {
+        $cinemaId = $this->requireManagerCinema();
+        AuthMiddleware::requirePermission('concessions.create');
+        try {
+            $rawInput = json_decode(file_get_contents('php://input'), true);
+
+            if (!is_array($rawInput) || empty($rawInput)) {
+                Response::error('Dữ liệu không hợp lệ hoặc rỗng', 400);
+            }
+
+            $items = isset($rawInput['items']) && is_array($rawInput['items'])
+                ? $rawInput['items']
+                : (isset($rawInput[0]) ? $rawInput : []);
+
+            $defaultMode = isset($rawInput['mode'])
+                ? (string)$rawInput['mode']
+                : (isset($rawInput['default_mode']) ? (string)$rawInput['default_mode'] : 'set');
+
+            if (empty($items)) {
+                Response::error('Danh sách sản phẩm trống', 400);
+            }
+
+            require_once __DIR__ . '/../models/Concession.php';
+            $concessionModel = new Concession();
+
+            $successCount = 0;
+            $updatedInventoryCount = 0;
+            $createdCount = 0;
+            $errors = [];
+
+            // Pre-load all existing concessions
+            $existingRows = $this->db->query("SELECT id, name, price, category, image_url FROM concessions")->fetchAll(\PDO::FETCH_ASSOC);
+            $concessionMap = [];
+            foreach ($existingRows as $row) {
+                $cleanName = mb_strtolower(trim($row['name']), 'UTF-8');
+                $concessionMap[$cleanName] = $row;
+            }
+
+            foreach ($items as $index => $item) {
+                $rowNum = $index + 1;
+                try {
+                    $name = trim((string)($item['name'] ?? ''));
+                    if ($name === '') {
+                        $errors[] = "Dòng $rowNum: Thiếu tên sản phẩm";
+                        continue;
+                    }
+
+                    $mode = !empty($item['mode']) ? (string)$item['mode'] : $defaultMode;
+                    $rawQty = $item['quantity'] ?? null;
+                    $quantity = ($rawQty !== null && $rawQty !== '') ? (int)$rawQty : null;
+
+                    if ($quantity !== null && $quantity < 0) {
+                        $errors[] = "Dòng $rowNum: Số lượng không hợp lệ ($quantity < 0)";
+                        continue;
+                    }
+
+                    $cleanName = mb_strtolower($name, 'UTF-8');
+                    $concessionId = null;
+
+                    // Check if concession already exists by name
+                    if (isset($concessionMap[$cleanName])) {
+                        $concessionId = (int)$concessionMap[$cleanName]['id'];
+                    } else if (!empty($item['id']) && is_numeric($item['id'])) {
+                        $checkId = (int)$item['id'];
+                        $cStmt = $this->db->prepare("SELECT id FROM concessions WHERE id = :id");
+                        $cStmt->execute([':id' => $checkId]);
+                        if ($cStmt->fetchColumn()) {
+                            $concessionId = $checkId;
+                        }
+                    }
+
+                    // If not found, create new concession if price is provided
+                    if (!$concessionId) {
+                        $price = isset($item['price']) && is_numeric($item['price']) ? (float)$item['price'] : null;
+                        if ($price === null || $price <= 0) {
+                            $errors[] = "Dòng $rowNum: Sản phẩm '{$name}' chưa có trong hệ thống và thiếu Giá (VNĐ) hợp lệ để tạo mới";
+                            continue;
+                        }
+
+                        $category = !empty($item['category']) ? trim((string)$item['category']) : null;
+                        $imageUrl = !empty($item['image_url']) ? trim((string)$item['image_url']) : null;
+
+                        $newId = $concessionModel->create([
+                            'name'         => $name,
+                            'price'        => $price,
+                            'category'     => $category,
+                            'image_url'    => $imageUrl,
+                            'is_available' => true
+                        ]);
+
+                        if (!$newId) {
+                            $errors[] = "Dòng $rowNum: Không thể tạo sản phẩm '{$name}'";
+                            continue;
+                        }
+
+                        $concessionId = (int)$newId;
+                        $concessionMap[$cleanName] = [
+                            'id' => $concessionId,
+                            'name' => $name,
+                            'price' => $price,
+                            'category' => $category,
+                            'image_url' => $imageUrl
+                        ];
+                        $createdCount++;
+                    }
+
+                    // Update inventory for manager's cinema
+                    if ($quantity !== null) {
+                        $targetQty = $quantity;
+                        if ($mode === 'add') {
+                            $currentStock = $concessionModel->getStock($cinemaId, $concessionId);
+                            $targetQty = max(0, $currentStock + $quantity);
+                        }
+
+                        $concessionModel->setInventory($cinemaId, $concessionId, $targetQty);
+                        $updatedInventoryCount++;
+                    }
+
+                    $successCount++;
+                } catch (\Exception $e) {
+                    $errors[] = "Dòng $rowNum: Lỗi xử lý '{$item['name']}' - " . $e->getMessage();
+                }
+            }
+
+            Response::success([
+                'message' => "Nhập file Excel hoàn tất: $successCount sản phẩm thành công" .
+                    ($createdCount > 0 ? " (tạo mới $createdCount món)" : "") .
+                    ", cập nhật kho $updatedInventoryCount sản phẩm" .
+                    (count($errors) > 0 ? ", " . count($errors) . " dòng lỗi" : ""),
+                'success_count' => $successCount,
+                'created_count' => $createdCount,
+                'updated_inventory_count' => $updatedInventoryCount,
+                'errors' => $errors
+            ], 200);
+
+        } catch (\Exception $e) {
+            Response::serverError('Lỗi khi import danh sách bắp nước: ' . $e->getMessage());
+        }
+    }
 }
+
 

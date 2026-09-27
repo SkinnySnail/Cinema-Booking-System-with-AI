@@ -28,7 +28,7 @@ class Seat
                     FROM {$this->table} s
                     JOIN seat_types st ON s.seat_type_id = st.id
                     WHERE s.cinema_hall_id = :hall_id
-                    ORDER BY s.row_code ASC, s.number ASC";
+                    ORDER BY s.id ASC";
 
             $stmt = $this->db->prepare($sql);
             $stmt->bindParam(':hall_id', $hallId, PDO::PARAM_INT);
@@ -192,50 +192,46 @@ class Seat
 
     /**
      * Thay thế toàn bộ layout ghế của một hall
-     * Nếu có suất chiếu sắp tới: cập nhật seat_type_id và status trực tiếp (không xóa ghế)
-     * Nếu không có suất chiếu: xóa và tạo lại toàn bộ
+     * Đồng bộ hóa và cập nhật ghế theo vị trí lưới vật lý
+     * Bảo toàn ID ghế cho các vé đã đặt, tránh lỗi trùng UNIQUE KEY
      */
     public function replaceLayout($hallId, $seats)
     {
         try {
-            $hasUpcomingShowtimes = !$this->canDeleteSeats($hallId);
-
             $this->db->beginTransaction();
 
-            if ($hasUpcomingShowtimes) {
-                // Có suất chiếu sắp tới → cập nhật từng ghế tại chỗ (không xóa)
-                $updateSql = "UPDATE {$this->table} 
-                              SET seat_type_id = :seat_type_id, status = :status 
-                              WHERE cinema_hall_id = :hall_id AND row_code = :row_code AND number = :number";
-                $updateStmt = $this->db->prepare($updateSql);
+            // 1. Lấy danh sách ID ghế hiện có của hall theo thứ tự vật lý (id ASC)
+            $existingSeatsStmt = $this->db->prepare("SELECT id FROM {$this->table} WHERE cinema_hall_id = :hall_id ORDER BY id ASC");
+            $existingSeatsStmt->execute([':hall_id' => $hallId]);
+            $existingSeats = $existingSeatsStmt->fetchAll(PDO::FETCH_COLUMN);
 
-                $insertSql = "INSERT INTO {$this->table} (cinema_hall_id, row_code, number, seat_type_id, status) 
-                              VALUES (:hall_id, :row_code, :number, :seat_type_id, :status)
-                              ON DUPLICATE KEY UPDATE seat_type_id = VALUES(seat_type_id), status = VALUES(status)";
-                $insertStmt = $this->db->prepare($insertSql);
+            $totalExisting = count($existingSeats);
+            $totalNew = count($seats);
 
-                foreach ($seats as $s) {
-                    $seatStatus = isset($s['status']) ? $s['status'] : 'Active';
-                    $insertStmt->execute([
-                        ':hall_id' => $hallId,
+            // 2. Tạm thời đổi number thành số âm (-id) để giải phóng toàn bộ khóa unique (cinema_hall_id, row_code, number)
+            if ($totalExisting > 0) {
+                $tempStmt = $this->db->prepare("UPDATE {$this->table} SET number = -id WHERE cinema_hall_id = :hall_id");
+                $tempStmt->execute([':hall_id' => $hallId]);
+            }
+
+            // 3. Cập nhật các ghế hiện có và chèn thêm ghế mới nếu cần
+            $updateStmt = $this->db->prepare("UPDATE {$this->table} SET row_code = :row_code, number = :number, seat_type_id = :seat_type_id, status = :status WHERE id = :id");
+            $insertStmt = $this->db->prepare("INSERT INTO {$this->table} (cinema_hall_id, row_code, number, seat_type_id, status) VALUES (:hall_id, :row_code, :number, :seat_type_id, :status)");
+
+            for ($i = 0; $i < $totalNew; $i++) {
+                $s = $seats[$i];
+                $statusCandidate = $s['status'] ?? 'Active';
+                $seatStatus = in_array($statusCandidate, ['Active', 'Broken', 'Inactive']) ? $statusCandidate : 'Active';
+
+                if ($i < $totalExisting) {
+                    $updateStmt->execute([
+                        ':id' => $existingSeats[$i],
                         ':row_code' => $s['row_code'],
                         ':number' => $s['number'],
                         ':seat_type_id' => $s['seat_type_id'],
                         ':status' => $seatStatus
                     ]);
-                }
-            } else {
-                // Không có suất chiếu → xóa và tạo lại toàn bộ
-                $deleteSql = "DELETE FROM {$this->table} WHERE cinema_hall_id = :hall_id";
-                $deleteStmt = $this->db->prepare($deleteSql);
-                $deleteStmt->execute([':hall_id' => $hallId]);
-
-                $insertSql = "INSERT INTO {$this->table} (cinema_hall_id, row_code, number, seat_type_id, status) 
-                              VALUES (:hall_id, :row_code, :number, :seat_type_id, :status)";
-                $insertStmt = $this->db->prepare($insertSql);
-
-                foreach ($seats as $s) {
-                    $seatStatus = isset($s['status']) ? $s['status'] : 'Active';
+                } else {
                     $insertStmt->execute([
                         ':hall_id' => $hallId,
                         ':row_code' => $s['row_code'],
@@ -246,8 +242,25 @@ class Seat
                 }
             }
 
-            // Cập nhật total_seats trong cinema_halls (chỉ đếm ghế Active)
-            $count = count(array_filter($seats, fn($s) => ($s['status'] ?? 'Active') === 'Active'));
+            // 4. Nếu giảm kích thước phòng (số ghế mới ít hơn số ghế cũ)
+            if ($totalExisting > $totalNew) {
+                $deleteStmt = $this->db->prepare("DELETE FROM {$this->table} WHERE id = :id");
+                $deactivateStmt = $this->db->prepare("UPDATE {$this->table} SET status = 'Inactive' WHERE id = :id");
+
+                for ($i = $totalNew; $i < $totalExisting; $i++) {
+                    $seatId = $existingSeats[$i];
+                    $checkStmt = $this->db->prepare("SELECT COUNT(*) FROM tickets WHERE seat_id = :seat_id");
+                    $checkStmt->execute([':seat_id' => $seatId]);
+                    if ($checkStmt->fetchColumn() > 0) {
+                        $deactivateStmt->execute([':id' => $seatId]);
+                    } else {
+                        $deleteStmt->execute([':id' => $seatId]);
+                    }
+                }
+            }
+
+            // 5. Cập nhật total_seats trong cinema_halls (đếm ghế thực tế, loại trừ Inactive/lối đi)
+            $count = count(array_filter($seats, fn($s) => ($s['status'] ?? 'Active') !== 'Inactive'));
             $updateHallSql = "UPDATE cinema_halls SET total_seats = :total WHERE id = :hall_id";
             $updateHallStmt = $this->db->prepare($updateHallSql);
             $updateHallStmt->execute([':total' => $count, ':hall_id' => $hallId]);
@@ -269,10 +282,15 @@ class Seat
     public function hasFutureShowtimeBindings($hallId)
     {
         try {
+            // Chỉ chặn nếu suất chiếu tương lai của phòng này đã có vé được bán (SOLD, USED)
+            // Nếu suất chiếu mới tạo để test hoặc chưa có vé nào bán ra, admin hoàn toàn có thể cập nhật sơ đồ ghế
             $sql = "SELECT COUNT(*) as total
-                    FROM showtimes
-                    WHERE cinema_hall_id = :hall_id
-                      AND start_time >= NOW()";
+                    FROM tickets t
+                    JOIN bookings b ON t.booking_id = b.id
+                    JOIN showtimes st ON b.showtime_id = st.id
+                    WHERE st.cinema_hall_id = :hall_id
+                      AND st.start_time >= NOW()
+                      AND t.status IN ('SOLD', 'USED')";
             $stmt = $this->db->prepare($sql);
             $stmt->execute([':hall_id' => $hallId]);
 
@@ -283,6 +301,7 @@ class Seat
             return true;
         }
     }
+
 
     /**
      * Kiểm tra xem có thể xóa/thay đổi ghế của hall không

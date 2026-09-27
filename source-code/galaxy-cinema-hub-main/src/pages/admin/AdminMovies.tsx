@@ -742,6 +742,68 @@ const AdminMovies: React.FC = () => {
     }
   };
 
+  const handleDownloadTemplate = () => {
+    try {
+      const templateData = [
+        {
+          "Tên phim": "Mai",
+          "Thời lượng (phút)": 131,
+          "Phân loại (P/K/T13/T16/T18/C)": "T18",
+          "Nguồn gốc (Vietnam/International)": "Vietnam",
+          "Trạng thái (Now Showing/Coming Soon/Ended)": "Now Showing",
+          "Đạo diễn": "Trấn Thành",
+          "Diễn viên": "Phương Anh Đào, Tuấn Trần, Trấn Thành",
+          "Ngày phát hành (YYYY-MM-DD)": "2024-02-10",
+          "Tóm tắt phim": "Câu chuyện tình yêu đầy trắc trở giữa Mai và Dương.",
+          "Link Trailer (URL)": "https://www.youtube.com/watch?v=example",
+          "Link Poster (URL)": "https://example.com/poster-mai.jpg",
+        },
+        {
+          "Tên phim": "Dune: Hành Tinh Cát - Phần 2",
+          "Thời lượng (phút)": 166,
+          "Phân loại (P/K/T13/T16/T18/C)": "T16",
+          "Nguồn gốc (Vietnam/International)": "International",
+          "Trạng thái (Now Showing/Coming Soon/Ended)": "Now Showing",
+          "Đạo diễn": "Denis Villeneuve",
+          "Diễn viên": "Timothée Chalamet, Zendaya, Rebecca Ferguson",
+          "Ngày phát hành (YYYY-MM-DD)": "2024-03-01",
+          "Tóm tắt phim": "Hành trình báo thù và định mệnh của Paul Atreides trên hành tinh Arrakis.",
+          "Link Trailer (URL)": "https://www.youtube.com/watch?v=example2",
+          "Link Poster (URL)": "https://example.com/poster-dune2.jpg",
+        },
+      ];
+
+      const worksheet = XLSX.utils.json_to_sheet(templateData);
+      worksheet["!cols"] = [
+        { wch: 30 },
+        { wch: 18 },
+        { wch: 28 },
+        { wch: 32 },
+        { wch: 38 },
+        { wch: 22 },
+        { wch: 35 },
+        { wch: 28 },
+        { wch: 45 },
+        { wch: 35 },
+        { wch: 35 },
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "DanhSachPhim");
+      XLSX.writeFile(workbook, "mau_nhap_phim.xlsx");
+      toast({
+        title: "📥 Đã tạo file mẫu",
+        description: "File mẫu 'mau_nhap_phim.xlsx' đã được tải về máy của bạn.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Lỗi tạo file mẫu",
+        description: error.message || "Không thể tạo file mẫu excel",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -760,6 +822,16 @@ const AdminMovies: React.FC = () => {
             ref={fileInputRef}
             onChange={handleFileUpload}
           />
+          <Button
+            variant="outline"
+            className="flex items-center gap-2"
+            onClick={handleDownloadTemplate}
+            title="Tải file Excel mẫu để nhập phim"
+          >
+            <Download className="w-4 h-4" />
+            Tạo file mẫu
+          </Button>
+
           <Button
             variant="outline"
             className="flex items-center gap-2"

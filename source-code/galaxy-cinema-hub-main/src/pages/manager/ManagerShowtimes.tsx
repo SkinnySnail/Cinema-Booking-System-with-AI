@@ -155,8 +155,8 @@ const ManagerShowtimes: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl lg:text-2xl font-bold text-gray-800">Quản Lý Lịch Chiếu</h1>
-          <p className="text-sm text-gray-800/40 mt-0.5">Xếp lịch và quản lý suất chiếu của rạp</p>
+          <h1 className="text-xl lg:text-2xl font-bold text-slate-800 dark:text-slate-100">Quản Lý Lịch Chiếu</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Xếp lịch và quản lý suất chiếu của rạp</p>
         </div>
         <div className="flex items-center gap-2">
           {cinemaInfo && (
@@ -177,13 +177,13 @@ const ManagerShowtimes: React.FC = () => {
       </div>
 
       {/* Controls bar */}
-      <div className="flex flex-wrap gap-3 items-center p-4 rounded-2xl border border-gray-200 bg-white">
+      <div className="flex flex-wrap gap-3 items-center p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-xs">
         {/* View toggle */}
-        <div className="flex gap-1 p-1 bg-white rounded-xl">
+        <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
           {[{ v: "list" as const, label: "Danh sách" }, { v: "week" as const, label: "7 ngày" }].map(opt => (
             <button key={opt.v} onClick={() => setViewMode(opt.v)}
-              className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-                viewMode === opt.v ? "bg-orange-500 text-white shadow-lg" : "text-gray-500 hover:text-white"
+              className={cn("px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                viewMode === opt.v ? "bg-orange-500 text-white shadow-md shadow-orange-500/20" : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               )}>
               {opt.label}
             </button>
@@ -192,11 +192,11 @@ const ManagerShowtimes: React.FC = () => {
 
         {/* Date picker */}
         <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-gray-800/40" />
+          <Calendar className="w-4 h-4 text-slate-400" />
           <input
             type="date" value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
-            className="h-9 px-3 rounded-xl bg-white border border-gray-200 text-gray-800 text-sm focus:outline-none focus:border-orange-500/50 transition-colors"
+            className="h-9 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:border-orange-500/50 transition-colors"
           />
         </div>
 
@@ -204,7 +204,7 @@ const ManagerShowtimes: React.FC = () => {
         <select
           value={filterHall}
           onChange={e => setFilterHall(e.target.value)}
-          className="h-9 px-3 rounded-xl bg-white border border-gray-200 text-gray-800 text-sm focus:outline-none focus:border-orange-500/50 transition-colors [&>option]:bg-white"
+          className="h-9 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:border-orange-500/50 transition-colors [&>option]:bg-white dark:[&>option]:bg-slate-800"
         >
           <option value="">Tất cả phòng</option>
           {halls.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
@@ -214,7 +214,7 @@ const ManagerShowtimes: React.FC = () => {
         <select
           value={filterMovie}
           onChange={e => setFilterMovie(e.target.value)}
-          className="h-9 px-3 rounded-xl bg-white border border-gray-200 text-gray-800 text-sm focus:outline-none focus:border-orange-500/50 transition-colors max-w-[180px] [&>option]:bg-white"
+          className="h-9 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:border-orange-500/50 transition-colors max-w-[180px] [&>option]:bg-white dark:[&>option]:bg-slate-800"
         >
           <option value="">Tất cả phim</option>
           {movies.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
@@ -222,14 +222,14 @@ const ManagerShowtimes: React.FC = () => {
 
         <button
           onClick={() => { setSelectedDate(new Date().toISOString().slice(0, 10)); setFilterHall(""); setFilterMovie(""); }}
-          className="px-3 h-9 rounded-xl text-xs text-gray-800/50 hover:text-gray-800 hover:bg-gray-50 transition-colors"
+          className="px-3 h-9 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
         >
           Xóa lọc
         </button>
 
         <button
           onClick={() => void fetchData()}
-          className="ml-auto flex items-center gap-1.5 px-3 h-9 rounded-xl bg-white hover:bg-gray-100 text-gray-800/60 hover:text-gray-800 text-xs transition-all border border-gray-200"
+          className="ml-auto flex items-center gap-1.5 px-3 h-9 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white text-xs font-medium transition-all border border-slate-200/80 dark:border-slate-700 cursor-pointer shadow-xs"
         >
           <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} /> Tải lại
         </button>
@@ -237,20 +237,20 @@ const ManagerShowtimes: React.FC = () => {
 
       {/* Week mini-calendar */}
       {viewMode === "week" && (
-        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0f172a] p-4 shadow-xs">
           <div className="flex items-center justify-between mb-3">
             <button
               onClick={() => setWeekCenter(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n; })}
-              className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-800/50 hover:text-gray-800 transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-sm font-medium text-gray-800">
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
               {weekDays[0].toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} – {weekDays[6].toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })}
             </span>
             <button
               onClick={() => setWeekCenter(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n; })}
-              className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-800/50 hover:text-gray-800 transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -265,23 +265,23 @@ const ManagerShowtimes: React.FC = () => {
                   key={i}
                   onClick={() => setSelectedDate(d.toISOString().slice(0, 10))}
                   className={cn(
-                    "flex flex-col items-center p-2 rounded-xl transition-all",
-                    sel ? "bg-orange-500/20 border border-orange-500/40" : "hover:bg-white border border-transparent",
-                    today && !sel && "border-gray-200"
+                    "flex flex-col items-center p-2 rounded-xl transition-all cursor-pointer",
+                    sel ? "bg-orange-500/15 border border-orange-500/40 text-orange-500 dark:text-orange-400" : "hover:bg-slate-100 dark:hover:bg-slate-850 border border-transparent",
+                    today && !sel && "border-slate-300 dark:border-slate-700 font-bold"
                   )}
                 >
-                  <span className={cn("text-xs mb-1", today ? "text-orange-400 font-bold" : "text-gray-800/40")}>
+                  <span className={cn("text-xs mb-1", today ? "text-orange-500 dark:text-orange-400 font-bold" : "text-slate-400 dark:text-slate-500")}>
                     {d.toLocaleDateString("vi-VN", { weekday: "short" }).slice(0, 2)}
                   </span>
-                  <span className={cn("text-sm font-semibold", sel ? "text-orange-400" : today ? "text-gray-800" : "text-gray-800/70")}>
+                  <span className={cn("text-sm font-semibold", sel ? "text-orange-500 dark:text-orange-400" : today ? "text-slate-800 dark:text-slate-100" : "text-slate-600 dark:text-slate-300")}>
                     {d.getDate()}
                   </span>
                   {shows.length > 0 && (
                     <div className="flex gap-0.5 mt-1 flex-wrap justify-center">
                       {shows.slice(0, 3).map((_, si) => (
-                        <div key={si} className="w-1 h-1 rounded-full bg-orange-400 opacity-80" />
+                        <div key={si} className="w-1 h-1 rounded-full bg-orange-500 opacity-80" />
                       ))}
-                      {shows.length > 3 && <span className="text-[8px] text-orange-400">+</span>}
+                      {shows.length > 3 && <span className="text-[8px] text-orange-500 font-bold">+</span>}
                     </div>
                   )}
                 </button>
@@ -292,34 +292,34 @@ const ManagerShowtimes: React.FC = () => {
       )}
 
       {/* Showtimes List */}
-      <div className="rounded-2xl border border-gray-200 bg-white">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+      <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-slate-200/80 dark:border-slate-800">
           <div className="flex items-center gap-3">
-            <Film className="w-4 h-4 text-orange-400" />
-            <span className="text-sm font-semibold text-gray-800">
+            <Film className="w-4 h-4 text-orange-500 dark:text-orange-400" />
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
               Lịch Chiếu · {new Date(selectedDate).toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit" })}
             </span>
-            <span className="px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-400 text-xs font-medium">
+            <span className="px-2 py-0.5 rounded-full bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 border border-orange-200/60 dark:border-orange-800/40 text-xs font-semibold">
               {showtimes.length} suất
             </span>
           </div>
-          {loading && <RefreshCw className="w-4 h-4 animate-spin text-gray-800/30" />}
+          {loading && <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />}
         </div>
 
         <div className="p-4">
           {loading ? (
             <div className="space-y-3">
               {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-20 rounded-xl bg-white animate-pulse" />
+                <div key={i} className="h-20 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
               ))}
             </div>
           ) : showtimes.length === 0 ? (
             <div className="py-16 text-center">
-              <Film className="w-10 h-10 mx-auto mb-3 text-gray-800/20" />
-              <p className="text-gray-800/30 text-sm">Không có suất chiếu nào</p>
+              <Film className="w-10 h-10 mx-auto mb-3 text-slate-300 dark:text-slate-600" />
+              <p className="text-slate-400 dark:text-slate-500 text-sm">Không có suất chiếu nào</p>
               <button
                 onClick={() => { setShowForm(true); setForm(EMPTY_FORM); setEditingId(null); }}
-                className="mt-3 text-xs text-orange-400 hover:text-orange-300 transition-colors"
+                className="mt-3 text-xs font-semibold text-orange-500 hover:text-orange-600 dark:text-orange-400 transition-colors cursor-pointer"
               >
                 + Thêm suất chiếu mới
               </button>
@@ -331,36 +331,36 @@ const ManagerShowtimes: React.FC = () => {
                 return (
                   <div
                     key={st.id}
-                    className="flex items-center gap-4 p-4 rounded-xl border border-gray-200 bg-gray-50 hover:bg-white hover:border-gray-200 transition-all group"
+                    className="flex items-center gap-4 p-4 rounded-xl border border-slate-200/70 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 hover:bg-white dark:hover:bg-slate-800/60 hover:border-slate-300 dark:hover:border-slate-700 transition-all group"
                   >
                     {/* Time */}
                     <div className="text-center shrink-0 w-14">
-                      <div className="text-sm font-bold text-orange-400">{fmtTime(st.start_time)}</div>
-                      <div className="text-xs text-gray-800/30">{fmtTime(st.end_time)}</div>
+                      <div className="text-sm font-bold text-orange-500 dark:text-orange-400">{fmtTime(st.start_time)}</div>
+                      <div className="text-xs text-slate-400 dark:text-slate-500">{fmtTime(st.end_time)}</div>
                     </div>
 
                     {/* Divider */}
-                    <div className="w-px h-10 bg-gray-100 shrink-0" />
+                    <div className="w-px h-10 bg-slate-200 dark:bg-slate-800 shrink-0" />
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-800 truncate">{st.movie_title}</div>
+                      <div className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{st.movie_title}</div>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="text-xs text-gray-800/40">{st.hall_name}</span>
-                        <span className="text-gray-800/20 text-xs">·</span>
-                        <span className="text-xs text-gray-800/40">{st.duration} phút</span>
-                        <span className="text-gray-800/20 text-xs">·</span>
-                        <span className="text-xs text-orange-400/80">{fmt(st.base_price)}</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{st.hall_name}</span>
+                        <span className="text-slate-300 dark:text-slate-600 text-xs">·</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{st.duration} phút</span>
+                        <span className="text-slate-300 dark:text-slate-600 text-xs">·</span>
+                        <span className="text-xs font-medium text-orange-500 dark:text-orange-400">{fmt(st.base_price)}</span>
                       </div>
                     </div>
 
                     {/* Occupancy */}
                     <div className="shrink-0 hidden sm:flex flex-col items-end gap-1.5">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-800/40">{st.sold_seats}/{st.total_seats}</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{st.sold_seats}/{st.total_seats}</span>
                         <span className={cn("text-xs font-bold", occ.text)}>{st.occupancy}%</span>
                       </div>
-                      <div className="w-20 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="w-20 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                         <div className={cn("h-full rounded-full transition-all", occ.bar)} style={{ width: `${st.occupancy}%` }} />
                       </div>
                     </div>
@@ -370,7 +370,7 @@ const ManagerShowtimes: React.FC = () => {
                       <button
                         onClick={() => handleEdit(st)}
                         disabled={new Date(st.start_time).getTime() < Date.now() || st.sold_seats > 0}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-800/80 hover:text-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all border border-gray-200"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all border border-slate-200/80 dark:border-slate-700 cursor-pointer"
                         title={new Date(st.start_time).getTime() < Date.now() || st.sold_seats > 0 ? "Không thể sửa suất chiếu đã/đang diễn ra hoặc đã bán vé" : "Chỉnh sửa"}
                       >
                         <Edit3 className="w-3.5 h-3.5" />
@@ -378,7 +378,7 @@ const ManagerShowtimes: React.FC = () => {
                       <button
                         onClick={() => setDeleteConfirm(st)}
                         disabled={st.sold_seats > 0}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all border border-gray-200"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all border border-slate-200/80 dark:border-slate-700 cursor-pointer"
                         title={st.sold_seats > 0 ? "Không thể xóa: đã có vé bán" : "Xóa suất chiếu"}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -394,23 +394,23 @@ const ManagerShowtimes: React.FC = () => {
 
       {/* Add/Edit Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between p-5 border-b border-gray-200">
-              <h2 className="font-semibold text-gray-800">{editingId ? "Sửa Suất Chiếu" : "Thêm Suất Chiếu Mới"}</h2>
-              <button onClick={() => setShowForm(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-800/50 hover:text-gray-800 transition-colors">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200/80 dark:border-slate-800">
+              <h2 className="font-semibold text-slate-800 dark:text-slate-100">{editingId ? "Sửa Suất Chiếu" : "Thêm Suất Chiếu Mới"}</h2>
+              <button onClick={() => setShowForm(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
             <form onSubmit={e => void handleSubmit(e)} className="p-5 space-y-4">
               {/* Movie */}
               <div>
-                <label className="text-xs font-medium text-gray-800/60 mb-1.5 block uppercase tracking-wide">Phim *</label>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 block uppercase tracking-wide">Phim *</label>
                 <select
                   value={form.movie_id}
                   onChange={e => setForm(f => ({ ...f, movie_id: e.target.value }))}
                   required
-                  className="w-full h-10 px-3 rounded-xl bg-white border border-gray-200 text-gray-800 text-sm focus:outline-none focus:border-orange-500/50 [&>option]:bg-white"
+                  className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:border-orange-500/50 [&>option]:bg-white dark:[&>option]:bg-slate-800"
                 >
                   <option value="">Chọn phim...</option>
                   {movies.map(m => (
@@ -421,12 +421,12 @@ const ManagerShowtimes: React.FC = () => {
 
               {/* Hall */}
               <div>
-                <label className="text-xs font-medium text-gray-800/60 mb-1.5 block uppercase tracking-wide">Phòng chiếu *</label>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 block uppercase tracking-wide">Phòng chiếu *</label>
                 <select
                   value={form.cinema_hall_id}
                   onChange={e => setForm(f => ({ ...f, cinema_hall_id: e.target.value }))}
                   required
-                  className="w-full h-10 px-3 rounded-xl bg-white border border-gray-200 text-gray-800 text-sm focus:outline-none focus:border-orange-500/50 [&>option]:bg-white"
+                  className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:border-orange-500/50 [&>option]:bg-white dark:[&>option]:bg-slate-800"
                 >
                   <option value="">Chọn phòng...</option>
                   {halls.map(h => (
@@ -437,43 +437,43 @@ const ManagerShowtimes: React.FC = () => {
 
               {/* Start time */}
               <div>
-                <label className="text-xs font-medium text-gray-800/60 mb-1.5 block uppercase tracking-wide">Thời gian bắt đầu *</label>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 block uppercase tracking-wide">Thời gian bắt đầu *</label>
                 <input
                   type="datetime-local"
                   value={form.start_time}
                   onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))}
                   required
                   min={new Date().toISOString().slice(0, 16)}
-                  className="w-full h-10 px-3 rounded-xl bg-white border border-gray-200 text-gray-800 text-sm focus:outline-none focus:border-orange-500/50"
+                  className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:border-orange-500/50"
                 />
                 {estimatedEnd && (
-                  <p className="mt-1.5 text-xs text-gray-800/40 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                    Kết thúc dự kiến: <span className="text-emerald-400 font-medium">{estimatedEnd}</span> (phim + 15 phút dọn rạp)
+                  <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
+                    Kết thúc dự kiến: <span className="text-emerald-600 dark:text-emerald-400 font-medium">{estimatedEnd}</span> (phim + 15 phút dọn rạp)
                   </p>
                 )}
               </div>
 
               {/* Price */}
               <div>
-                <label className="text-xs font-medium text-gray-800/60 mb-1.5 block uppercase tracking-wide">Giá vé cơ sở (VNĐ) *</label>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 block uppercase tracking-wide">Giá vé cơ sở (VNĐ) *</label>
                 <input
                   type="number"
                   value={form.base_price}
                   onChange={e => setForm(f => ({ ...f, base_price: e.target.value }))}
                   required min="10000" step="5000"
-                  className="w-full h-10 px-3 rounded-xl bg-white border border-gray-200 text-gray-800 text-sm focus:outline-none focus:border-orange-500/50"
+                  className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:border-orange-500/50"
                 />
-                <p className="mt-1 text-xs text-gray-800/30">{fmt(parseFloat(form.base_price) || 0)}</p>
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{fmt(parseFloat(form.base_price) || 0)}</p>
               </div>
 
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowForm(false)}
-                  className="flex-1 h-10 rounded-xl border border-gray-200 text-gray-800/60 hover:text-gray-800 hover:border-gray-300 text-sm transition-all">
+                  className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-medium transition-all cursor-pointer">
                   Hủy
                 </button>
                 <button type="submit" disabled={submitting}
-                  className="flex-1 h-10 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-medium text-sm hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-orange-500/20">
+                  className="flex-1 h-10 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-medium text-sm hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-orange-500/20 cursor-pointer">
                   {submitting ? <RefreshCw className="w-4 h-4 animate-spin mx-auto" /> : editingId ? "Cập nhật" : "Tạo suất chiếu"}
                 </button>
               </div>
@@ -484,22 +484,22 @@ const ManagerShowtimes: React.FC = () => {
 
       {/* Delete Confirm Modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-2xl border border-red-500/20 bg-white shadow-2xl p-6 text-center">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-red-500/20 bg-white dark:bg-[#0f172a] shadow-2xl p-6 text-center">
             <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="w-6 h-6 text-red-400" />
+              <AlertTriangle className="w-6 h-6 text-red-500 dark:text-red-400" />
             </div>
-            <h3 className="font-semibold text-gray-800 mb-1">Xóa suất chiếu?</h3>
-            <p className="text-sm text-gray-800/50 mb-1">{deleteConfirm.movie_title}</p>
-            <p className="text-xs text-gray-800/30 mb-5">{fmtDate(deleteConfirm.start_time)} · {fmtTime(deleteConfirm.start_time)} · {deleteConfirm.hall_name}</p>
-            <p className="text-xs text-red-400/80 mb-5">Hành động này không thể hoàn tác.</p>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-100 mb-1">Xóa suất chiếu?</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">{deleteConfirm.movie_title}</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mb-5">{fmtDate(deleteConfirm.start_time)} · {fmtTime(deleteConfirm.start_time)} · {deleteConfirm.hall_name}</p>
+            <p className="text-xs text-red-500 dark:text-red-400 font-medium mb-5">Hành động này không thể hoàn tác.</p>
             <div className="flex gap-3">
               <button onClick={() => setDeleteConfirm(null)}
-                className="flex-1 h-10 rounded-xl border border-gray-200 text-gray-800/60 hover:text-gray-800 text-sm transition-all">
+                className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-medium transition-all cursor-pointer">
                 Hủy
               </button>
               <button onClick={() => void handleDelete()}
-                className="flex-1 h-10 rounded-xl bg-red-500/90 hover:bg-red-500 text-white font-medium text-sm transition-all shadow-lg shadow-red-500/20">
+                className="flex-1 h-10 rounded-xl bg-red-500 hover:bg-red-600 text-white font-medium text-sm transition-all shadow-lg shadow-red-500/20 cursor-pointer">
                 Xóa
               </button>
             </div>

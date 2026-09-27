@@ -30,14 +30,154 @@ const LocationPickerMap: React.FC<LocationPickerMapProps> = ({ lat, lng, onChang
         
         setIsSearching(true);
         try {
-            const searchStr = `${addressToSearch}, Việt Nam`;
-            const response = await fetch(
-                `https://api.maptiler.com/geocoding/${encodeURIComponent(searchStr)}.json?key=${maptilerKey}&limit=1&country=vn`
-            );
-            const data = await response.json();
-            if (data.features && data.features.length > 0) {
-                const [newLlng, newLlat] = data.features[0].center;
+            const rawAddress = addressToSearch.replace(/\s+/g, ' ').trim();
+            
+            // Helper to strip accents & lowercase for robust Vietnamese comparison
+            const stripVN = (s: string) => 
+                (s || '')
+                 .normalize('NFD')
+                 .replace(/[\u0300-\u036f]/g, '')
+                 .replace(/đ/g, 'd')
+                 .replace(/Đ/g, 'D')
+                 .toLowerCase();
+
+            // Extract house number and clean street name
+            const firstPart = rawAddress.split(',')[0].trim();
+            const houseNumRegex = /^(\d+[a-zA-Z0-9\/-]*)\s+/;
+            const houseMatch = firstPart.match(houseNumRegex);
+            const houseNumStr = houseMatch ? houseMatch[1] : '';
+            const targetHouseNum = houseNumStr ? parseInt(houseNumStr, 10) : null;
+            const streetNameClean = firstPart.replace(houseNumRegex, '').trim() || firstPart;
+
+            // Extract district keyword if present (e.g. "Quận 6", "Q.6", "Tân Bình", "Quận 1")
+            const districtMatch = rawAddress.match(/(quận\s+\d+|quận\s+[a-zà-ỹ\s]+|huyện\s+[a-zà-ỹ\s]+|q\.\s*\d+|q\d+)/i);
+            const districtName = districtMatch ? districtMatch[0].trim() : '';
+
+            // Proximity: prefer current valid coordinates if available to prioritize same neighborhood
+            const proximity = (lat !== null && lng !== null && lat !== 0 && lng !== 0)
+                ? `${lng},${lat}`
+                : '106.660172,10.762622';
+
+            const queryMapTiler = async (q: string) => {
+                const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=${maptilerKey}&limit=10&country=vn&proximity=${proximity}`;
+                const res = await fetch(url);
+                const json = await res.json();
+                return (json.features || []) as any[];
+            };
+
+            // Queries in order of precision:
+            const queriesToTry: string[] = [];
+            if (targetHouseNum && streetNameClean) {
+                queriesToTry.push(`${targetHouseNum} ${streetNameClean}, ${districtName || 'Hồ Chí Minh'}`);
+                queriesToTry.push(`${streetNameClean}, ${districtName || 'Hồ Chí Minh'}`);
+                queriesToTry.push(`${streetNameClean}, Hồ Chí Minh`);
+            } else {
+                if (streetNameClean && districtName) {
+                    queriesToTry.push(`${streetNameClean}, ${districtName}, Hồ Chí Minh`);
+                }
+                queriesToTry.push(`${rawAddress}, Hồ Chí Minh`);
+                queriesToTry.push(`${streetNameClean}, Hồ Chí Minh`);
+            }
+
+            const allFeatures: any[] = [];
+            const seenIds = new Set<string>();
+
+            for (const q of queriesToTry) {
+                const features = await queryMapTiler(q);
+                if (features && features.length > 0) {
+                    for (const f of features) {
+                        if (!seenIds.has(f.id)) {
+                            seenIds.add(f.id);
+                            allFeatures.push(f);
+                        }
+                    }
+                }
+            }
+
+            const streetNorm = stripVN(streetNameClean);
+            const districtNorm = stripVN(districtName);
+
+            // Filter features matching the street
+            const validFeatures = allFeatures.filter((f: any) => {
+                const textNorm = stripVN(f.text || '');
+                const placeNorm = stripVN(f.place_name || '');
+                const contextNorm = stripVN((f.context || []).map((c: any) => c.text || '').join(' '));
+                const fullNorm = `${textNorm} ${placeNorm} ${contextNorm}`;
+
+                const streetMatches = streetNorm ? fullNorm.includes(streetNorm) : false;
+                if (!streetMatches) return false;
+
+                if (districtNorm) {
+                    const districtMatches = fullNorm.includes(districtNorm) || 
+                        (districtNorm.includes('6') && (fullNorm.includes('binh tien') || fullNorm.includes('cho lon') || fullNorm.includes('phuong 1') || fullNorm.includes('phuong 3') || fullNorm.includes('phuong 14')));
+                    if (!districtMatches && !fullNorm.includes('ho chi minh')) return false;
+                }
+
+                return true;
+            });
+
+            if (validFeatures.length === 0) {
+                alert("Không tìm thấy kết quả tự động từ địa chỉ nhập. Vui lòng chấm tay trên bản đồ.");
+                return;
+            }
+
+            // Score features to pick the closest house number or closest to existing pin
+            let bestFeature: any = validFeatures[0];
+            let bestScore = -999999;
+
+            for (const f of validFeatures) {
+                let score = 0;
+                const text = f.text || '';
+                const place = f.place_name || '';
+                const full = `${text} ${place}`;
+
+                const featNumMatch = full.match(/(?:Hẻm\s*|Số\s*)?(\d+)/i);
+                const featNum = featNumMatch ? parseInt(featNumMatch[1], 10) : null;
+
+                if (targetHouseNum !== null) {
+                    if (featNum !== null) {
+                        const diff = Math.abs(featNum - targetHouseNum);
+                        score += Math.max(120 - diff * 0.4, 0);
+                    } else {
+                        score += 20;
+                    }
+                } else {
+                    score += 50;
+                }
+
+                // Proximity bonus if user already had a valid pin on the map
+                if (lat !== null && lng !== null && lat !== 0 && lng !== 0 && f.center) {
+                    const [fLng, fLat] = f.center;
+                    const distKm = Math.hypot(fLng - lng, fLat - lat) * 111;
+                    if (distKm < 0.3) score += 40;
+                    else if (distKm < 0.8) score += 20;
+                }
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestFeature = f;
+                }
+            }
+
+            if (bestFeature && bestFeature.center) {
+                const [newLlng, newLlat] = bestFeature.center;
+                
+                // If user's existing pin is already on the exact same spot (< 35 meters), preserve manual precision
+                if (lat !== null && lng !== null && lat !== 0 && lng !== 0) {
+                    const distKm = Math.hypot(newLlng - lng, newLlat - lat) * 111;
+                    if (distKm < 0.035) {
+                        // Keep current pin and smoothly re-center
+                        if (map.current) {
+                            map.current.flyTo({ center: [lng, lat], zoom: 16 });
+                        }
+                        return;
+                    }
+                }
+
                 onChange(newLlat, newLlng);
+                if (map.current) {
+                    map.current.flyTo({ center: [newLlng, newLlat], zoom: 16 });
+                }
             } else {
                 alert("Không tìm thấy kết quả tự động từ địa chỉ nhập. Vui lòng chấm tay trên bản đồ.");
             }

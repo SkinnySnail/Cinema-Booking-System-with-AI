@@ -65,24 +65,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 }) => {
   // Initialize user synchronously from localStorage to prevent race conditions
   // (e.g., AdminLayout checking isAuthenticated before useEffect runs)
-  const [user, setUser] = useState<User | null>(() => {
-    const token = localStorage.getItem("token");
-    const savedUser = localStorage.getItem("user");
-    if (token && savedUser) {
-      try {
-        return JSON.parse(savedUser);
-      } catch (error) {
-        console.error("Failed to parse saved user:", error);
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        return null;
-      }
-    }
-    return null;
-  });
+  // Helper function to map role_id / base_role / role to UserRole
+  const mapRoleIdToRole = (
+    roleId?: number,
+    baseRole?: string,
+    roleStr?: string
+  ): UserRole => {
+    const check = (baseRole || roleStr || "").toLowerCase();
+    if (check === "admin") return "admin";
+    if (check === "manager") return "manager";
+    if (check === "staff") return "staff";
+    if (check === "client" || check === "member" || check === "guest")
+      return "client";
 
-  // Helper function to map role_id to role
-  const mapRoleIdToRole = (roleId: number): UserRole => {
     switch (roleId) {
       case 5:
         return "admin";
@@ -96,6 +91,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         return "client";
     }
   };
+
+  const [user, setUser] = useState<User | null>(() => {
+    const token = localStorage.getItem("token");
+    const savedUser = localStorage.getItem("user");
+    if (token && savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        const remapped = mapRoleIdToRole(
+          parsed.role_id,
+          parsed.base_role,
+          parsed.role
+        );
+        if (remapped && remapped !== parsed.role) {
+          parsed.role = remapped;
+        }
+        return parsed;
+      } catch (error) {
+        console.error("Failed to parse saved user:", error);
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        return null;
+      }
+    }
+    return null;
+  });
 
   const login = async (
     email: string,
@@ -117,20 +137,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         return { success: false };
       }
 
+      const backendUser = data.data.user;
+      const resolvedRole = mapRoleIdToRole(
+        backendUser.role_id,
+        backendUser.base_role,
+        backendUser.role
+      );
+
       // Map backend response to User type
       const userData: User = {
-        id: data.data.user.id.toString(),
-        name: data.data.user.full_name,
-        email: data.data.user.email,
-        role: mapRoleIdToRole(data.data.user.role_id),
-        avatar: data.data.user.avatar || undefined,
-        loyaltyPoints: data.data.user.current_points || 0,
-        phone: data.data.user.phone,
-        dob: data.data.user.dob,
-        cinema_id: data.data.user.cinema_id
-          ? String(data.data.user.cinema_id)
+        id: backendUser.id.toString(),
+        name: backendUser.full_name,
+        email: backendUser.email,
+        role: resolvedRole,
+        base_role: backendUser.base_role || (backendUser.role || "").toLowerCase(),
+        role_id: backendUser.role_id,
+        roles: backendUser.roles || [],
+        permissions: backendUser.permissions || [],
+        avatar: backendUser.avatar || undefined,
+        loyaltyPoints: backendUser.current_points || 0,
+        phone: backendUser.phone,
+        dob: backendUser.dob,
+        cinema_id: backendUser.cinema_id
+          ? String(backendUser.cinema_id)
           : undefined,
-        cinema_name: data.data.user.cinema_name || undefined,
+        cinema_name: backendUser.cinema_name || undefined,
       };
 
       // Save token and user to localStorage
@@ -163,9 +194,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       setUser(null);
     };
 
+    const handleFocusOrRefresh = () => {
+      const token = localStorage.getItem("token");
+      if (token) {
+        refreshUser();
+      }
+    };
+
     window.addEventListener("auth:unauthorized", handleUnauthorized);
+    window.addEventListener("focus", handleFocusOrRefresh);
+    window.addEventListener("auth:refresh", handleFocusOrRefresh);
+
+    // Auto-refresh user profile on load if logged in
+    const token = localStorage.getItem("token");
+    if (token) {
+      refreshUser();
+    }
+
     return () => {
       window.removeEventListener("auth:unauthorized", handleUnauthorized);
+      window.removeEventListener("focus", handleFocusOrRefresh);
+      window.removeEventListener("auth:refresh", handleFocusOrRefresh);
     };
   }, []);
 
@@ -189,24 +238,38 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       console.log("📦 Refreshed user data:", data);
 
       if (data.success && data.data.user) {
+        if (data.data.token) {
+          localStorage.setItem("token", data.data.token);
+        }
+        const backendUser = data.data.user;
+        const resolvedRole = mapRoleIdToRole(
+          backendUser.role_id,
+          backendUser.base_role,
+          backendUser.role
+        );
+
         const userData: User = {
-          id: data.data.user.id.toString(),
-          name: data.data.user.full_name,
-          email: data.data.user.email,
-          role: mapRoleIdToRole(data.data.user.role_id),
-          avatar: data.data.user.avatar || undefined,
-          loyaltyPoints: data.data.user.current_points || 0,
-          phone: data.data.user.phone,
-          dob: data.data.user.dob,
-          cinema_id: data.data.user.cinema_id
-            ? String(data.data.user.cinema_id)
+          id: backendUser.id.toString(),
+          name: backendUser.full_name,
+          email: backendUser.email,
+          role: resolvedRole,
+          base_role: backendUser.base_role || (backendUser.role || "").toLowerCase(),
+          role_id: backendUser.role_id,
+          roles: backendUser.roles || [],
+          permissions: backendUser.permissions || [],
+          avatar: backendUser.avatar || undefined,
+          loyaltyPoints: backendUser.current_points || 0,
+          phone: backendUser.phone,
+          dob: backendUser.dob,
+          cinema_id: backendUser.cinema_id
+            ? String(backendUser.cinema_id)
             : undefined,
-          cinema_name: data.data.user.cinema_name || undefined,
+          cinema_name: backendUser.cinema_name || undefined,
         };
 
         localStorage.setItem("user", JSON.stringify(userData));
         setUser(userData);
-        console.log("✅ User data refreshed successfully");
+        console.log("✅ User data refreshed successfully, role:", resolvedRole);
       }
     } catch (error) {
       console.error("❌ Error refreshing user:", error);

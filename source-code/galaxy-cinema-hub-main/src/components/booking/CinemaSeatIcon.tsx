@@ -26,11 +26,14 @@ export const CinemaSeatIcon: React.FC<CinemaSeatIconProps> = ({
   const { theme } = useTheme();
   const isLight = theme === "light";
 
-  const isSold = status === "sold" || status === "maintenance";
+  const isMaintenance = status === "maintenance";
+  const isSold = status === "sold";
   const isHeld = status === "held" && !isSelected;
 
-  const width = isMerged ? 94 : 42;
-  const height = 36;
+  const baseWidth = isMerged ? 94 : 42;
+  const baseHeight = 36;
+  const width = isMerged ? 80 : 36;
+  const height = 31;
 
   // Adaptive Fill & Stroke based on Theme and Seat Type
   let backFill = isLight ? "url(#standardBackGradLight)" : "url(#standardBackGradDark)";
@@ -39,12 +42,18 @@ export const CinemaSeatIcon: React.FC<CinemaSeatIconProps> = ({
   let armFill = isLight ? "#cbd5e1" : "#334155";
   let armStroke = isLight ? "#94a3b8" : "#475569";
 
-  if (isSold) {
-    backFill = isLight ? "#f1f5f9" : "#131822";
-    cushionFill = isLight ? "#e2e8f0" : "#0c1017";
-    strokeColor = isLight ? "#cbd5e1" : "#1e2736";
-    armFill = isLight ? "#f1f5f9" : "#131822";
-    armStroke = isLight ? "#e2e8f0" : "#1a2230";
+  if (isMaintenance) {
+    backFill = isLight ? "#fef3c7" : "#292524";
+    cushionFill = isLight ? "#fde68a" : "#1c1917";
+    strokeColor = isLight ? "#f59e0b" : "#78716c";
+    armFill = isLight ? "#fef3c7" : "#292524";
+    armStroke = isLight ? "#f59e0b" : "#78716c";
+  } else if (isSold) {
+    backFill = isLight ? "#e2e8f0" : "#1e293b";
+    cushionFill = isLight ? "#cbd5e1" : "#0f172a";
+    strokeColor = isLight ? "#94a3b8" : "#334155";
+    armFill = isLight ? "#e2e8f0" : "#1e293b";
+    armStroke = isLight ? "#94a3b8" : "#334155";
   } else if (isHeld) {
     backFill = "url(#heldBackGrad)";
     cushionFill = "url(#heldCushionGrad)";
@@ -75,12 +84,13 @@ export const CinemaSeatIcon: React.FC<CinemaSeatIconProps> = ({
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled || isSold || (isHeld && !isSelected)}
+      disabled={disabled || isSold || isMaintenance || (isHeld && !isSelected)}
       title={title}
       className={cn(
         "group relative flex flex-col items-center justify-center p-0.5 transition-all duration-200 outline-none focus:outline-none select-none",
-        !disabled && !isSold && "hover:scale-115 hover:-translate-y-1 active:scale-95 cursor-pointer z-10 hover:z-20",
-        isSold && "cursor-not-allowed opacity-30 saturate-50",
+        !disabled && !isSold && !isMaintenance && "hover:scale-115 hover:-translate-y-1 active:scale-95 cursor-pointer z-10 hover:z-20",
+        isSold && "cursor-not-allowed opacity-65 dark:opacity-60",
+        isMaintenance && "cursor-not-allowed opacity-75 saturate-75",
       )}
       style={{ width: `${width}px`, height: `${height}px` }}
     >
@@ -93,7 +103,7 @@ export const CinemaSeatIcon: React.FC<CinemaSeatIconProps> = ({
       <svg
         width={width}
         height={height}
-        viewBox={`0 0 ${width} ${height}`}
+        viewBox={`0 0 ${baseWidth} ${baseHeight}`}
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         className={cn(
@@ -303,25 +313,25 @@ export const CinemaSeatIcon: React.FC<CinemaSeatIconProps> = ({
           </g>
         )}
 
-        {/* Sold indicator slash */}
+        {/* Sold indicator slash - Hiển thị 1 dấu X duy nhất ở chính giữa ghế */}
         {isSold && (
-          <g opacity={isLight ? "0.45" : "0.6"}>
+          <g opacity={isLight ? "0.85" : "0.9"}>
             <line
-              x1={isMerged ? "38" : "15"}
+              x1={isMerged ? "39" : "13"}
               y1="10"
-              x2={isMerged ? "56" : "27"}
+              x2={isMerged ? "55" : "29"}
               y2="28"
-              stroke={isLight ? "#94a3b8" : "#64748b"}
-              strokeWidth="1.8"
+              stroke={isLight ? "#64748b" : "#94a3b8"}
+              strokeWidth={isMerged ? "2.2" : "2"}
               strokeLinecap="round"
             />
             <line
-              x1={isMerged ? "56" : "27"}
+              x1={isMerged ? "55" : "29"}
               y1="10"
-              x2={isMerged ? "38" : "15"}
+              x2={isMerged ? "39" : "13"}
               y2="28"
-              stroke={isLight ? "#94a3b8" : "#64748b"}
-              strokeWidth="1.8"
+              stroke={isLight ? "#64748b" : "#94a3b8"}
+              strokeWidth={isMerged ? "2.2" : "2"}
               strokeLinecap="round"
             />
           </g>
@@ -332,7 +342,7 @@ export const CinemaSeatIcon: React.FC<CinemaSeatIconProps> = ({
       {!isSold && (
         <span
           className={cn(
-            "absolute text-[11px] font-black pointer-events-none transition-all tracking-tight select-none",
+            "absolute text-[10px] font-black pointer-events-none transition-all tracking-tight select-none",
             isSelected
               ? "text-white font-extrabold drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] scale-110"
               : type === "vip"
@@ -343,7 +353,7 @@ export const CinemaSeatIcon: React.FC<CinemaSeatIconProps> = ({
                     ? "text-slate-800 font-extrabold"
                     : "text-zinc-200 font-bold",
           )}
-          style={{ top: "17px" }}
+          style={{ top: "14px" }}
         >
           {seatNumber}
         </span>

@@ -8,6 +8,7 @@ import {
   History,
   ReceiptText,
   Home,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -27,29 +28,62 @@ const StaffLayout: React.FC = () => {
     }
 
     // Check if user is staff, manager, or admin
+    const currentRole = (user?.role || user?.base_role || "").toLowerCase();
     if (
       user &&
-      user.role !== "staff" &&
-      user.role !== "manager" &&
-      user.role !== "admin"
+      currentRole !== "staff" &&
+      currentRole !== "manager" &&
+      currentRole !== "admin"
     ) {
       navigate("/", { replace: true });
     }
   }, [isAuthenticated, user, navigate]);
 
   // Don't render anything while checking authentication
-  if (!isAuthenticated || !user) {
+  const currentRole = (user?.role || user?.base_role || "").toLowerCase();
+  if (!isAuthenticated || !user || (currentRole !== "staff" && currentRole !== "manager" && currentRole !== "admin")) {
     return null;
   }
 
+  const permissions = user?.permissions || [];
+  const isAdmin = user?.role === "admin" || user?.base_role === "admin";
+
   const navItems = [
-    { path: "/staff/scanner", label: "Quét Vé", icon: QrCode },
-    { path: "/staff/pos", label: "Bán Vé", icon: ShoppingCart },
-    { path: "/staff/scan-history", label: "Lịch Sử Quét", icon: History },
+    {
+      path: "/staff/scanner",
+      label: "Quét Vé",
+      icon: QrCode,
+      hasPerm:
+        isAdmin ||
+        permissions.includes("tickets.scan") ||
+        permissions.includes("tickets.approve_entry"),
+    },
+    {
+      path: "/staff/pos",
+      label: "Bán Vé",
+      icon: ShoppingCart,
+      hasPerm:
+        isAdmin ||
+        permissions.includes("bookings.pos"),
+    },
+    {
+      path: "/staff/scan-history",
+      label: "Lịch Sử Quét",
+      icon: History,
+      hasPerm:
+        isAdmin ||
+        permissions.includes("tickets.scan") ||
+        permissions.includes("tickets.view_all"),
+    },
     {
       path: "/staff/payment-history",
       label: "Lịch Sử Thanh Toán",
       icon: ReceiptText,
+      hasPerm:
+        isAdmin ||
+        permissions.includes("bookings.pos") ||
+        permissions.includes("transactions.view_all") ||
+        permissions.includes("bookings.view_all"),
     },
   ];
 
@@ -115,10 +149,16 @@ const StaffLayout: React.FC = () => {
                     isActive
                       ? "border-primary text-primary bg-primary/5"
                       : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                    !item.hasPerm && "opacity-75",
                   )}
                 >
                   <Icon className="w-5 h-5" />
-                  {item.label}
+                  <span>{item.label}</span>
+                  {!item.hasPerm && (
+                    <span title="Chức năng yêu cầu quyền bổ sung" className="inline-flex items-center">
+                      <Lock className="w-3.5 h-3.5 text-muted-foreground/70" />
+                    </span>
+                  )}
                 </Link>
               );
             })}

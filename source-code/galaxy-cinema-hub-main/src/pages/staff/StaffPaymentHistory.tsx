@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { API_ENDPOINTS, apiCall } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AppContext";
+import StaffAccessDenied from "@/components/staff/StaffAccessDenied";
 import * as XLSX from "xlsx";
 
 interface PosPaymentHistoryItem {
@@ -59,6 +61,23 @@ interface BookingDetailResponse {
 
 const StaffPaymentHistory: React.FC = () => {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const [accessDenied, setAccessDenied] = useState(false);
+
+  // Kiểm tra quyền xem lịch sử thanh toán
+  const hasHistoryPermission = useMemo(() => {
+    if (!user) return true;
+    if (user.role === "admin" || user.base_role === "admin") return true;
+
+    if (user.permissions && Array.isArray(user.permissions)) {
+      return (
+        user.permissions.includes("bookings.pos") ||
+        user.permissions.includes("transactions.view_all") ||
+        user.permissions.includes("bookings.view_all")
+      );
+    }
+    return true;
+  }, [user]);
 
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<PosPaymentHistoryItem[]>([]);
@@ -78,6 +97,12 @@ const StaffPaymentHistory: React.FC = () => {
   });
 
   const fetchHistory = async (nextFilters = filters) => {
+    if (!hasHistoryPermission) {
+      setAccessDenied(true);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError("");
@@ -100,10 +125,19 @@ const StaffPaymentHistory: React.FC = () => {
 
       const rows = res.data?.items || res.items || [];
       setItems(rows);
-    } catch (err) {
+      setAccessDenied(false);
+    } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Không thể tải lịch sử thanh toán";
-      setError(message);
+      if (
+        message.includes("Không có quyền") ||
+        message.includes("403") ||
+        message.includes("Insufficient")
+      ) {
+        setAccessDenied(true);
+      } else {
+        setError(message);
+      }
       setItems([]);
     } finally {
       setLoading(false);
@@ -111,9 +145,14 @@ const StaffPaymentHistory: React.FC = () => {
   };
 
   useEffect(() => {
-    void fetchHistory();
+    if (hasHistoryPermission) {
+      setAccessDenied(false);
+      void fetchHistory();
+    } else {
+      setAccessDenied(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hasHistoryPermission, user?.permissions, user?.role_id]);
 
   const handleFilterChange = (key: keyof typeof filters, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -315,6 +354,17 @@ const StaffPaymentHistory: React.FC = () => {
       setReprintingBookingId(null);
     }
   };
+
+  if (!hasHistoryPermission || accessDenied) {
+    return (
+      <StaffAccessDenied
+        title="Bạn không có quyền xem Lịch Sử Thanh Toán"
+        requiredPermission="bookings.pos"
+        returnPath="/staff/scanner"
+        returnLabel="Chuyển sang Quét Vé"
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">

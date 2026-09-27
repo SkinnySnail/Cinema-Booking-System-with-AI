@@ -204,11 +204,57 @@ const SeatSelectionPage: React.FC = () => {
     fetchMovie();
   }, [selectedMovie, searchParams]);
 
-  // Convert API response to component format
+  // Tạo mã chữ cái cho hàng: A, B, C, ... Z, AA, AB, ...
+  const getRowLetter = (index: number): string => {
+    let letter = "";
+    let temp = index;
+    while (temp >= 0) {
+      letter = String.fromCharCode((temp % 26) + 65) + letter;
+      temp = Math.floor(temp / 26) - 1;
+    }
+    return letter;
+  };
+
+  // Convert API response to component format with smart sequential row/col shifting
   const convertSeatMap = (apiResponse: SeatMapResponse): Seat[][] => {
-    const rows = Object.keys(apiResponse.seat_map).sort();
-    return rows.map((rowCode) => {
-      return apiResponse.seat_map[rowCode].map((seat) => {
+    // Thứ tự hàng vật lý trả về từ backend
+    const rowCodes = Object.keys(apiResponse.seat_map);
+    const rawRows = rowCodes.map((code) => apiResponse.seat_map[code]);
+
+    // 1. Tính toán nhãn hàng (Row Labels):
+    // Hàng có ít nhất 1 ghế thực tế (status !== "Inactive") -> được gán chữ cái tuần tự A, B, C...
+    // Hàng 100% lối đi (tất cả là Inactive) -> nhãn rỗng "", chữ cái dời sang hàng có ghế kế tiếp
+    let seatRowCounter = 0;
+    const rowLabels = rawRows.map((row) => {
+      const hasAnySeat = row.some((s) => s.status !== "Inactive");
+      if (!hasAnySeat) return "";
+      const label = getRowLetter(seatRowCounter);
+      seatRowCounter++;
+      return label;
+    });
+
+    // 2. Tính toán nhãn cột (Column Labels):
+    // Cột mà tất cả các hàng đều là Inactive (100% là lối đi dọc xuyên suốt phòng) -> null (bị ẩn số, dời sang cột kế tiếp)
+    // Cột có ít nhất 1 ghế thực tế ở bất kỳ hàng nào -> được đánh số tuần tự 1, 2, 3...
+    const maxCols = Math.max(...rawRows.map((r) => r.length), 0);
+    let seatColCounter = 1;
+    const colLabels: (number | null)[] = [];
+    for (let c = 0; c < maxCols; c++) {
+      const hasAnySeatInCol = rawRows.some(
+        (row) => row[c] && row[c].status !== "Inactive",
+      );
+      if (!hasAnySeatInCol) {
+        colLabels.push(null);
+      } else {
+        colLabels.push(seatColCounter);
+        seatColCounter++;
+      }
+    }
+
+    return rawRows.map((rowSeats, rIdx) => {
+      const displayRow = rowLabels[rIdx];
+
+      return rowSeats.map((seat, cIdx) => {
         const seatTypeLower = (seat.seat_type || "").toLowerCase();
         const multiplier = Number(seat.price_multiplier) || 1.0;
         let type: "standard" | "vip" | "couple" = "standard";
@@ -231,17 +277,27 @@ const SeatSelectionPage: React.FC = () => {
           | "held"
           | "sold"
           | "maintenance"
+          | "inactive"
           | "selected" = "available";
-        if (seat.status === "SOLD") seatStatus = "sold";
+        if (seat.status === "Inactive") seatStatus = "inactive";
+        else if (seat.status === "SOLD") seatStatus = "sold";
         else if (seat.status === "Maintenance") seatStatus = "maintenance";
         else if (seat.status === "HOLDING" && !seat.held_by_me)
           seatStatus = "held";
 
+        // Tính số ghế hiển thị (display number):
+        // Nếu cột là lối đi (colLabels[cIdx] === null) -> giữ nguyên seat.number
+        // Nếu cột có ghế -> lấy số cột đã dời colLabels[cIdx]
+        const displayNumber =
+          colLabels[cIdx] !== null && colLabels[cIdx] !== undefined
+            ? colLabels[cIdx]!
+            : seat.number;
+
         return {
           // Use DB seat id for booking API; render row/number for display.
           id: String(seat.id),
-          row: seat.row_code,
-          number: seat.number,
+          row: displayRow || seat.row_code,
+          number: displayNumber,
           type,
           status: seatStatus,
           price: Number(seat.calculated_price) || 0,
@@ -533,7 +589,13 @@ const SeatSelectionPage: React.FC = () => {
       const current = row[i];
       const next = row[i + 1];
 
-      if (current.type === "couple" && next && next.type === "couple") {
+      if (
+        current.status !== "inactive" &&
+        current.type === "couple" &&
+        next &&
+        next.status !== "inactive" &&
+        next.type === "couple"
+      ) {
         grouped.push([current, next]);
         i++; // skip next
       } else {
@@ -644,27 +706,27 @@ const SeatSelectionPage: React.FC = () => {
 
       <Header />
 
-      <main className="flex-1 flex flex-col items-center justify-between px-3 sm:px-6 py-4 max-w-7xl mx-auto w-full relative z-10">
+      <main className="flex-1 flex flex-col items-center justify-between px-2 sm:px-4 py-2 sm:py-3 max-w-7xl mx-auto w-full relative z-10">
         {/* Top Header Card: Booking Stepper, Movie Info & Hold Timer */}
-        <div className="w-full mb-5 rounded-2xl bg-white/90 dark:bg-zinc-900/50 border border-slate-200/90 dark:border-white/10 backdrop-blur-xl p-4 shadow-sm dark:shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+        <div className="w-full mb-3 rounded-2xl bg-white/90 dark:bg-zinc-900/50 border border-slate-200/90 dark:border-white/10 backdrop-blur-xl p-3 shadow-sm dark:shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
           {/* Booking Stepper */}
-          <div className="flex items-center justify-center gap-2 sm:gap-4 mb-4 pb-3 border-b border-slate-200/80 dark:border-white/5 text-xs sm:text-sm">
+          <div className="flex items-center justify-center gap-2 sm:gap-4 mb-2 pb-2 border-b border-slate-200/80 dark:border-white/5 text-xs sm:text-sm">
             <div className="flex items-center gap-2 text-sky-600 dark:text-sky-400 font-bold">
-              <span className="w-6 h-6 rounded-full bg-sky-500 text-white dark:text-black flex items-center justify-center text-xs font-black shadow-[0_0_12px_rgba(56,189,248,0.7)]">
+              <span className="w-5 h-5 rounded-full bg-sky-500 text-white dark:text-black flex items-center justify-center text-[11px] font-black shadow-[0_0_10px_rgba(56,189,248,0.7)]">
                 1
               </span>
               <span>Chọn Ghế</span>
             </div>
-            <span className="w-8 sm:w-16 h-[2px] bg-gradient-to-r from-sky-500/80 to-slate-300 dark:to-zinc-700" />
+            <span className="w-6 sm:w-12 h-[2px] bg-gradient-to-r from-sky-500/80 to-slate-300 dark:to-zinc-700" />
             <div className="flex items-center gap-2 text-slate-400 dark:text-zinc-500">
-              <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 flex items-center justify-center text-xs font-bold border border-slate-300/80 dark:border-zinc-700">
+              <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 flex items-center justify-center text-[11px] font-bold border border-slate-300/80 dark:border-zinc-700">
                 2
               </span>
               <span>Bắp Nước</span>
             </div>
-            <span className="w-8 sm:w-16 h-[2px] bg-slate-200 dark:bg-zinc-800" />
+            <span className="w-6 sm:w-12 h-[2px] bg-slate-200 dark:bg-zinc-800" />
             <div className="flex items-center gap-2 text-slate-400 dark:text-zinc-500">
-              <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 flex items-center justify-center text-xs font-bold border border-slate-300/80 dark:border-zinc-700">
+              <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 flex items-center justify-center text-[11px] font-bold border border-slate-300/80 dark:border-zinc-700">
                 3
               </span>
               <span>Thanh Toán</span>
@@ -672,8 +734,8 @@ const SeatSelectionPage: React.FC = () => {
           </div>
 
           {/* Movie Details & Hold Timer */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
               <div className="relative group shrink-0">
                 <img
                   src={
@@ -681,31 +743,31 @@ const SeatSelectionPage: React.FC = () => {
                     (movie.poster_url ? getImageUrl(movie.poster_url) : "")
                   }
                   alt={movie.title}
-                  className="w-12 h-16 sm:w-14 sm:h-20 object-cover rounded-xl shadow-md border border-slate-200 dark:border-white/15 transition-transform duration-300 group-hover:scale-105"
+                  className="w-10 h-14 sm:w-11 sm:h-16 object-cover rounded-xl shadow-md border border-slate-200 dark:border-white/15 transition-transform duration-300 group-hover:scale-105"
                 />
                 <div className="absolute -inset-1 rounded-xl bg-gradient-to-tr from-sky-500/20 to-purple-500/20 blur -z-10 opacity-70" />
               </div>
 
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="font-extrabold text-base sm:text-xl tracking-tight text-slate-900 dark:text-white drop-shadow-sm">
+                  <h1 className="font-extrabold text-sm sm:text-lg tracking-tight text-slate-900 dark:text-white drop-shadow-sm">
                     {movie.title}
                   </h1>
                   <Badge
-                    className={`${getAgeRatingColor(normalizeAgeRating(movie.age_rating || movie.ageRating))} text-white text-[11px] font-black px-2 py-0.5 rounded-md shadow-sm`}
+                    className={`${getAgeRatingColor(normalizeAgeRating(movie.age_rating || movie.ageRating))} text-white text-[10px] font-black px-1.5 py-0.5 rounded shadow-sm`}
                   >
                     {normalizeAgeRating(movie.age_rating || movie.ageRating)}
                   </Badge>
-                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-500/30">
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-500/30">
                     IMAX 2D
                   </span>
-                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-sky-500/10 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-500/30 hidden sm:inline-block">
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-sky-500/10 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-500/30 hidden sm:inline-block">
                     Dolby Atmos
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2 sm:gap-3 text-xs text-slate-500 dark:text-zinc-400 mt-1.5 flex-wrap">
-                  <span className="text-sky-600 dark:text-sky-400 font-bold text-sm bg-sky-50 dark:bg-sky-950/40 px-2 py-0.5 rounded border border-sky-200 dark:border-sky-800/40 font-mono">
+                <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-400 mt-1 flex-wrap">
+                  <span className="text-sky-600 dark:text-sky-400 font-bold text-xs bg-sky-50 dark:bg-sky-950/40 px-1.5 py-0.5 rounded border border-sky-200 dark:border-sky-800/40 font-mono">
                     {selectedShowtime.time}
                   </span>
                   <span>•</span>
@@ -752,13 +814,13 @@ const SeatSelectionPage: React.FC = () => {
         </div>
 
         {/* Theater Auditorium Card (Màn chiếu & Phòng chiếu) */}
-        <div className="w-full flex-1 flex flex-col items-center justify-center relative p-5 sm:p-10 rounded-3xl bg-white dark:bg-gradient-to-b dark:from-[#0e1422]/90 dark:via-[#0a0f19]/95 dark:to-[#070a10] border border-slate-200/90 dark:border-white/10 shadow-lg dark:shadow-[0_25px_70px_rgba(0,0,0,0.85)] overflow-hidden my-auto backdrop-blur-md">
+        <div className="w-full flex-1 flex flex-col items-center justify-center relative p-3 sm:p-5 rounded-2xl bg-white dark:bg-gradient-to-b dark:from-[#0e1422]/90 dark:via-[#0a0f19]/95 dark:to-[#070a10] border border-slate-200/90 dark:border-white/10 shadow-lg dark:shadow-[0_25px_70px_rgba(0,0,0,0.85)] overflow-hidden my-auto backdrop-blur-md">
           {/* Cinema Screen with Light Beam & Realistic Curved 3D Silver Arc */}
-          <div className="w-full max-w-4xl mx-auto flex flex-col items-center mb-8 sm:mb-12 relative">
+          <div className="w-full max-w-3xl mx-auto flex flex-col items-center mb-3 sm:mb-4 relative">
             {/* Top Projector Light Source */}
-            <div className="w-24 h-2 bg-gradient-to-b from-sky-400/80 to-transparent rounded-full blur-[2px] mb-2" />
+            <div className="w-16 h-1 bg-gradient-to-b from-sky-400/80 to-transparent rounded-full blur-[1px] mb-1" />
 
-            <svg viewBox="0 0 900 80" className="w-full max-w-3xl overflow-visible">
+            <svg viewBox="0 0 900 65" className="w-full max-w-2xl max-h-12 overflow-visible">
               <defs>
                 {/* Screen ambient projection beam */}
                 <linearGradient id="screenBeamEnhanced" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -814,28 +876,32 @@ const SeatSelectionPage: React.FC = () => {
             </svg>
 
             {/* Screen Label & Room Specs */}
-            <div className="flex flex-col items-center gap-1 mt-1 select-none">
-              <span className="text-[12px] font-extrabold tracking-[0.4em] text-slate-700 dark:text-zinc-300 drop-shadow-sm flex items-center gap-2">
+            <div className="flex flex-col items-center gap-0.5 mt-0.5 select-none">
+              <span className="text-[10px] sm:text-[11px] font-extrabold tracking-[0.3em] text-slate-700 dark:text-zinc-300 drop-shadow-sm flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-ping inline-block" />
                 MÀN HÌNH CHÍNH / IMAX SCREEN
               </span>
-              <span className="text-[10px] text-slate-500 dark:text-zinc-500 font-medium tracking-wider">
+              <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-zinc-500 font-medium tracking-wider">
                 Hệ thống âm thanh vòm Dolby Atmos • Máy chiếu Laser 4K
               </span>
             </div>
           </div>
 
           {/* Seat Grid Matrix with Left & Right Row Badges */}
-          <div className="flex flex-col items-center gap-2 sm:gap-2.5 overflow-x-auto max-w-full pb-4 px-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-zinc-700">
+          <div className="flex flex-col items-center gap-1.5 sm:gap-2 overflow-x-auto max-w-full pb-2 px-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-zinc-700">
             {seatMap.map((row, rowIndex) => (
               <div
                 key={rowIndex}
-                className="flex items-center gap-2 sm:gap-3"
+                className="flex items-center gap-1.5 sm:gap-2"
               >
                 {/* Left Row Label */}
-                <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-zinc-400 select-none shadow-sm">
-                  {row[0]?.row}
-                </span>
+                {row.every((s) => s.status === "inactive") ? (
+                  <span className="w-5 h-5 opacity-0 select-none pointer-events-none" />
+                ) : (
+                  <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 flex items-center justify-center text-[10px] sm:text-xs font-bold text-slate-600 dark:text-zinc-400 select-none shadow-sm">
+                    {row.find((s) => s.status !== "inactive")?.row || row[0]?.row}
+                  </span>
+                )}
 
                 {/* Seats in Row */}
                 <div className="flex items-center gap-1 sm:gap-1.5">
@@ -843,6 +909,18 @@ const SeatSelectionPage: React.FC = () => {
                     const isMerged = Array.isArray(seat);
                     const seats = isMerged ? seat : [seat];
                     const firstSeat = seats[0];
+
+                    // Khoảng trống / Lối đi (Inactive) -> Hiển thị ô trong suốt giữ khoảng cách
+                    if (firstSeat.status === "inactive") {
+                      return (
+                        <div
+                          key={isMerged ? `inactive-${seats[0].id}` : `inactive-${firstSeat.id || Math.random()}`}
+                          className="w-[36px] h-[31px] opacity-0 pointer-events-none select-none shrink-0"
+                          aria-hidden="true"
+                        />
+                      );
+                    }
+
                     const isSold = seats.some((s) => s.status === "sold");
                     const isMaintenance = seats.some(
                       (s) => s.status === "maintenance",
@@ -862,7 +940,7 @@ const SeatSelectionPage: React.FC = () => {
                       : firstSeat.price;
 
                     let seatStatus: "available" | "held" | "sold" | "maintenance" | "selected" =
-                      firstSeat.status;
+                       firstSeat.status;
                     if (isInSelectedSeats) seatStatus = "selected";
                     else if (isSold) seatStatus = "sold";
                     else if (isMaintenance) seatStatus = "maintenance";
@@ -879,8 +957,8 @@ const SeatSelectionPage: React.FC = () => {
                         onClick={() => handleSeatClick(seat)}
                         title={
                           isMaintenance
-                            ? "Khu vực không ngồi"
-                            : `Ghế ${row[0]?.row}${seatNumbers} (${firstSeat.type.toUpperCase()}) - ${price.toLocaleString("vi-VN")}đ`
+                            ? `Ghế ${firstSeat.row}${seatNumbers} - Đang bảo trì`
+                            : `Ghế ${firstSeat.row}${seatNumbers} (${firstSeat.type.toUpperCase()}) - ${price.toLocaleString("vi-VN")}đ`
                         }
                       />
                     );
@@ -888,20 +966,25 @@ const SeatSelectionPage: React.FC = () => {
                 </div>
 
                 {/* Right Row Label */}
-                <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-zinc-400 select-none shadow-sm">
-                  {row[0]?.row}
-                </span>
+                {row.every((s) => s.status === "inactive") ? (
+                  <span className="w-5 h-5 opacity-0 select-none pointer-events-none" />
+                ) : (
+                  <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 flex items-center justify-center text-[10px] sm:text-xs font-bold text-slate-600 dark:text-zinc-400 select-none shadow-sm">
+                    {row.find((s) => s.status !== "inactive")?.row || row[0]?.row}
+                  </span>
+                )}
+
               </div>
             ))}
           </div>
 
-          {/* Seat Legend Bar (Bảng chú thích loại ghế & giá vé) */}
-          <div className="w-full max-w-4xl flex flex-wrap items-center justify-center gap-4 sm:gap-6 pt-6 mt-6 border-t border-slate-200/90 dark:border-white/10 text-xs text-slate-700 dark:text-zinc-300">
+          {/* Seat Legend Bar (Bảng chú thích loại ghế & giá vé) - Luôn nằm thẳng 1 hàng */}
+          <div className="w-full max-w-5xl flex items-center justify-center gap-2 sm:gap-2.5 md:gap-3.5 pt-3 mt-3 border-t border-slate-200/90 dark:border-white/10 text-xs text-slate-700 dark:text-zinc-300 overflow-x-auto pb-0.5 flex-nowrap scrollbar-none">
             {/* Ghế Thường */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100/90 dark:bg-white/[0.03] border border-slate-200 dark:border-white/5">
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-100/90 dark:bg-white/[0.03] border border-slate-200 dark:border-white/5 shrink-0">
               <CinemaSeatIcon status="available" type="standard" disabled />
               <div>
-                <span className="font-semibold block text-slate-800 dark:text-zinc-200">Ghế thường</span>
+                <span className="font-semibold block text-slate-800 dark:text-zinc-200 text-xs leading-tight">Ghế thường</span>
                 <span className="text-slate-500 dark:text-zinc-400 font-mono text-[11px] font-semibold">
                   {standardPrice.toLocaleString("vi-VN")}đ
                 </span>
@@ -909,10 +992,10 @@ const SeatSelectionPage: React.FC = () => {
             </div>
 
             {/* Ghế VIP */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20">
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 shrink-0">
               <CinemaSeatIcon status="available" type="vip" disabled />
               <div>
-                <span className="font-semibold block text-purple-900 dark:text-purple-200">Ghế VIP</span>
+                <span className="font-semibold block text-purple-900 dark:text-purple-200 text-xs leading-tight">Ghế VIP</span>
                 <span className="text-purple-600 dark:text-purple-300 font-mono text-[11px] font-bold">
                   {vipPrice.toLocaleString("vi-VN")}đ
                 </span>
@@ -920,40 +1003,49 @@ const SeatSelectionPage: React.FC = () => {
             </div>
 
             {/* Ghế Đôi / Sweetbox */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20">
-              <CinemaSeatIcon status="available" type="couple" isMerged disabled />
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 shrink-0">
+              <CinemaSeatIcon status="available" type="couple" isMerged={false} disabled />
               <div>
-                <span className="font-semibold block text-rose-900 dark:text-rose-200">Ghế Đôi</span>
+                <span className="font-semibold block text-rose-900 dark:text-rose-200 text-xs leading-tight">Ghế Đôi</span>
                 <span className="text-rose-600 dark:text-rose-300 font-mono text-[11px] font-bold">
                   {couplePrice.toLocaleString("vi-VN")}đ
                 </span>
               </div>
             </div>
 
-            <span className="text-slate-300 dark:text-zinc-700 hidden lg:inline">|</span>
+            <span className="text-slate-300 dark:text-zinc-700 hidden sm:inline select-none shrink-0">|</span>
 
             {/* Đang Chọn */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/25">
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/25 shrink-0">
               <CinemaSeatIcon status="available" isSelected disabled />
               <div>
-                <span className="font-bold block text-sky-800 dark:text-sky-300">Đang chọn</span>
+                <span className="font-bold block text-sky-800 dark:text-sky-300 text-xs leading-tight">Đang chọn</span>
                 <span className="text-sky-600 dark:text-sky-400 font-mono text-[11px]">Đã chọn</span>
               </div>
             </div>
 
             {/* Đã Bán */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100/60 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 opacity-70">
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-100/90 dark:bg-zinc-800/60 border border-slate-300/80 dark:border-zinc-700 shrink-0">
               <CinemaSeatIcon status="sold" disabled />
               <div>
-                <span className="font-medium block text-slate-500 dark:text-zinc-400">Đã bán</span>
-                <span className="text-slate-400 dark:text-zinc-500 text-[11px]">Không thể chọn</span>
+                <span className="font-medium block text-slate-700 dark:text-zinc-300 text-xs leading-tight">Đã bán</span>
+                <span className="text-slate-500 dark:text-zinc-400 text-[11px]">Không thể chọn</span>
+              </div>
+            </div>
+
+            {/* Bảo Trì */}
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-300/80 dark:border-amber-500/30 shrink-0">
+              <CinemaSeatIcon status="maintenance" disabled />
+              <div>
+                <span className="font-medium block text-amber-800 dark:text-amber-300 text-xs leading-tight">Bảo trì</span>
+                <span className="text-amber-600/90 dark:text-amber-400/90 text-[11px]">Tạm khóa</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Bottom Floating Order Dock */}
-        <div className="w-full sticky bottom-3 z-40 mt-5 p-4 rounded-2xl bg-white/95 dark:bg-zinc-950/85 border border-slate-200/90 dark:border-white/15 backdrop-blur-2xl shadow-xl dark:shadow-[0_15px_40px_rgba(0,0,0,0.9)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="w-full sticky bottom-2 z-40 mt-3 p-3 sm:p-3.5 rounded-2xl bg-white/95 dark:bg-zinc-950/85 border border-slate-200/90 dark:border-white/15 backdrop-blur-2xl shadow-xl dark:shadow-[0_15px_40px_rgba(0,0,0,0.9)] flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="space-y-1">
               <div className="flex items-center gap-2">

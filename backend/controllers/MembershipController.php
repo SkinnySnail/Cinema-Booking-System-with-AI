@@ -5,6 +5,7 @@ require_once __DIR__ . '/../models/LoyaltyHistory.php';
 require_once __DIR__ . '/../models/UserVoucher.php';
 require_once __DIR__ . '/../core/Response.php';
 require_once __DIR__ . '/../config/Database.php';
+require_once __DIR__ . '/../middleware/AuthMiddleware.php';
 
 class MembershipController {
     private $membershipModel;
@@ -167,6 +168,8 @@ class MembershipController {
      */
     public function update() {
         try {
+            AuthMiddleware::requirePermission('system.settings');
+
             $input = json_decode(file_get_contents('php://input'), true);
             $tiers = $input['tiers'] ?? null;
 

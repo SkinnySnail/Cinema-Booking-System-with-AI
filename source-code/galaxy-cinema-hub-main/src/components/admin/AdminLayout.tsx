@@ -39,32 +39,50 @@ const AdminLayout: React.FC = () => {
     }
 
     // Check if user is admin (role = 'admin')
-    if (user && user.role !== "admin") {
+    const currentRole = (user?.role || (user as any)?.base_role || "").toLowerCase();
+    if (user && currentRole !== "admin") {
       navigate("/", { replace: true });
     }
   }, [isAuthenticated, user, navigate]);
 
   // Don't render anything while checking authentication
-  if (!isAuthenticated || !user || user.role !== "admin") {
+  const currentRole = (user?.role || (user as any)?.base_role || "").toLowerCase();
+  if (!isAuthenticated || !user || currentRole !== "admin") {
     return null;
   }
 
-  const navItems = [
+  // Check if user is Super Admin (Root Admin id=1, role_id=5, or SYSTEM_ADMIN)
+  const isSuperAdmin =
+    user?.id === "1" ||
+    (user as any)?.id === 1 ||
+    user?.email === "admin@galaxy.vn" ||
+    (user as any)?.role_id === 5 ||
+    (user as any)?.roles?.some((r: any) => r.id === 5 || r.code === "SYSTEM_ADMIN");
+
+  const hasPermission = (permission?: string) => {
+    if (isSuperAdmin) return true;
+    if (!permission) return true;
+    const perms = (user as any)?.permissions || [];
+    return Array.isArray(perms) && perms.includes(permission);
+  };
+
+  const allNavItems = [
     { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
-    { label: "Quản lý Phim", path: "/admin/movies", icon: Film },
-    { label: "Người Dùng", path: "/admin/users", icon: Users },
-    { label: "Quản lý Rạp", path: "/admin/cinemas", icon: Building2 },
-    { label: "Quản lý chỗ ngồi", path: "/admin/seats", icon: Armchair },
-    { label: "Khuyến Mãi", path: "/admin/promotions", icon: Ticket },
-    { label: "Bắp Nước", path: "/admin/concessions", icon: Coffee },
-    { label: "Lịch Chiếu", path: "/admin/scheduler", icon: Calendar },
-    { label: "Giao Dịch", path: "/admin/transactions", icon: CreditCard },
-    { label: "Đánh Giá", path: "/admin/reviews", icon: Star },
-    { label: "Thông Báo", path: "/admin/notifications", icon: Bell },
-    // { label: "Permissions", path: "/admin/permissions", icon: Shield },
-    { label: "Phân Quyền", path: "/admin/role-permissions", icon: UserCog },
-    { label: "Cấu Hình", path: "/admin/settings", icon: Settings },
+    { label: "Quản lý Phim", path: "/admin/movies", icon: Film, perm: "movies.view" },
+    { label: "Người Dùng", path: "/admin/users", icon: Users, perm: "users.view_all" },
+    { label: "Quản lý Rạp", path: "/admin/cinemas", icon: Building2, perm: "cinemas.view" },
+    { label: "Quản lý chỗ ngồi", path: "/admin/seats", icon: Armchair, perm: "halls.view" },
+    { label: "Khuyến Mãi", path: "/admin/promotions", icon: Ticket, perm: "promotions.view" },
+    { label: "Bắp Nước", path: "/admin/concessions", icon: Coffee, perm: "concessions.view" },
+    { label: "Lịch Chiếu", path: "/admin/scheduler", icon: Calendar, perm: "showtimes.view" },
+    { label: "Giao Dịch", path: "/admin/transactions", icon: CreditCard, perm: "transactions.view_all" },
+    { label: "Đánh Giá", path: "/admin/reviews", icon: Star, perm: "reviews.view_all" },
+    { label: "Thông Báo", path: "/admin/notifications", icon: Bell, perm: "promotions.view" },
+    { label: "Phân Quyền", path: "/admin/role-permissions", icon: UserCog, perm: "system.roles" },
+    { label: "Cấu Hình", path: "/admin/settings", icon: Settings, perm: "system.settings" },
   ];
+
+  const navItems = allNavItems.filter((item) => hasPermission(item.perm));
 
   const handleLogout = () => {
     logout();

@@ -19,6 +19,13 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import SeatHeatmap from "@/components/admin/SeatHeatmap";
 import { API_ENDPOINTS, apiCall } from "@/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface DashboardStats {
   today_revenue: number;
@@ -76,6 +83,10 @@ const AdminDashboard: React.FC = () => {
   const [transactions, setTransactions] = React.useState<RecentTransaction[]>(
     [],
   );
+  const [allHalls, setAllHalls] = React.useState<
+    Array<{ id: number; name: string; cinema_name: string }>
+  >([]);
+  const [selectedHallId, setSelectedHallId] = React.useState<string>("all");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -84,7 +95,7 @@ const AdminDashboard: React.FC = () => {
     setError(null);
 
     try {
-      const [statsRes, revenueRes, heatmapRes, txRes] = await Promise.all([
+      const [statsRes, revenueRes, heatmapRes, txRes, cinemasRes] = await Promise.all([
         apiCall<ApiResponse<DashboardStats>>(API_ENDPOINTS.ADMIN_STATS),
         apiCall<ApiResponse<{ items: RevenueItem[] }>>(
           API_ENDPOINTS.ADMIN_REVENUE,
@@ -95,6 +106,9 @@ const AdminDashboard: React.FC = () => {
         apiCall<ApiResponse<{ items: RecentTransaction[] }>>(
           API_ENDPOINTS.ADMIN_RECENT_TRANSACTIONS,
         ),
+        apiCall<ApiResponse<{ cinemas: Array<{ id: number; name: string; halls: Array<{ id: number; name: string }> }> }>>(
+          API_ENDPOINTS.CINEMAS,
+        ).catch(() => ({ data: { cinemas: [] } })),
       ]);
 
       setStats(statsRes.data);
@@ -107,6 +121,15 @@ const AdminDashboard: React.FC = () => {
       setHeatmapItems(heatmapRes.data.items || []);
       setHeatmapStats(heatmapRes.data.stats);
       setTransactions(txRes.data.items || []);
+
+      const hallsList = (cinemasRes.data.cinemas || []).flatMap((c) =>
+        (c.halls || []).map((h) => ({
+          id: h.id,
+          name: h.name,
+          cinema_name: c.name,
+        })),
+      );
+      setAllHalls(hallsList);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Không tải được dữ liệu dashboard",
@@ -115,6 +138,23 @@ const AdminDashboard: React.FC = () => {
       setLoading(false);
     }
   }, []);
+
+  const handleHallChange = async (hallId: string) => {
+    setSelectedHallId(hallId);
+    try {
+      const url =
+        hallId !== "all"
+          ? `${API_ENDPOINTS.ADMIN_SEAT_HEATMAP}?hall_id=${hallId}`
+          : API_ENDPOINTS.ADMIN_SEAT_HEATMAP;
+      const res = await apiCall<
+        ApiResponse<{ items: HeatmapItem[]; stats: HeatmapStats }>
+      >(url);
+      setHeatmapItems(res.data.items || []);
+      setHeatmapStats(res.data.stats);
+    } catch (err) {
+      console.error("Lỗi tải bản đồ nhiệt phòng:", err);
+    }
+  };
 
   React.useEffect(() => {
     void loadDashboardData();
@@ -361,11 +401,35 @@ const AdminDashboard: React.FC = () => {
 
       {/* Seat Heatmap */}
       <Card>
-        <CardHeader>
-          <CardTitle>Bản Đồ Nhiệt Ghế Ngồi</CardTitle>
-          <CardDescription>
-            Thống kê mức độ phổ biến của từng ghế trên toàn bộ dữ liệu
-          </CardDescription>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
+          <div>
+            <CardTitle>Bản Đồ Nhiệt Ghế Ngồi</CardTitle>
+            <CardDescription>
+              Thống kê mức độ phổ biến theo toàn bộ ma trận tối đa hàng và cột
+            </CardDescription>
+          </div>
+          {allHalls.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                Phòng chiếu:
+              </span>
+              <Select value={selectedHallId} onValueChange={handleHallChange}>
+                <SelectTrigger className="w-[230px] h-8 text-xs bg-background">
+                  <SelectValue placeholder="Tất cả phòng chiếu" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    Tất cả phòng (Khung tối đa)
+                  </SelectItem>
+                  {allHalls.map((h) => (
+                    <SelectItem key={h.id} value={String(h.id)}>
+                      {h.name} - {h.cinema_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <SeatHeatmap items={heatmapItems} stats={heatmapStats} />

@@ -53,8 +53,14 @@ interface TransactionItem {
 
 interface RevenueRow { label: string; revenue: number; booking_count: number; }
 
+import { useTheme } from "@/hooks/use-theme";
+
 // SVG Line chart for revenue
-const RevenueLineChart: React.FC<{ data: RevenueRow[]; height?: number }> = ({ data, height = 200 }) => {
+const RevenueLineChart: React.FC<{ data: RevenueRow[]; height?: number; isDark?: boolean }> = ({
+  data,
+  height = 200,
+  isDark = false
+}) => {
   if (!data.length) return null;
   const W = 600; const H = height;
   const PAD = { top: 20, right: 20, bottom: 32, left: 64 };
@@ -71,30 +77,34 @@ const RevenueLineChart: React.FC<{ data: RevenueRow[]; height?: number }> = ({ d
   const fmt = (v: number) => v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map(f => ({ val: maxRev * f, y: PAD.top + innerH - f * innerH }));
 
+  const gridStroke = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+  const textFill = isDark ? "rgba(148,163,184,0.7)" : "rgba(100,116,139,0.75)";
+  const dotFill = isDark ? "#0f172a" : "#ffffff";
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height }}>
       <defs>
         <linearGradient id="rv-area" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#f97316" stopOpacity="0.25" />
+          <stop offset="0%" stopColor="#f97316" stopOpacity={isDark ? 0.35 : 0.25} />
           <stop offset="100%" stopColor="#f97316" stopOpacity="0.02" />
         </linearGradient>
         <linearGradient id="rv-line" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="#f97316" /><stop offset="100%" stopColor="#fbbf24" />
         </linearGradient>
       </defs>
-      {ticks.map(({ y }, i) => <line key={i} x1={PAD.left} y1={y} x2={PAD.left + innerW} y2={y} stroke="rgba(0,0,0,0.06)" strokeWidth="1" />)}
+      {ticks.map(({ y }, i) => <line key={i} x1={PAD.left} y1={y} x2={PAD.left + innerW} y2={y} stroke={gridStroke} strokeDasharray="4 4" strokeWidth="1" />)}
       {ticks.map(({ val, y }, i) => (
-        <text key={i} x={PAD.left - 8} y={y + 4} textAnchor="end" fill="rgba(0,0,0,0.4)" fontSize="10" fontFamily="sans-serif">{fmt(val)}</text>
+        <text key={i} x={PAD.left - 8} y={y + 4} textAnchor="end" fill={textFill} fontSize="10" fontFamily="sans-serif">{fmt(val)}</text>
       ))}
       {pts.map((p, i) => (
-        <text key={i} x={p.x} y={H - 4} textAnchor="middle" fill={i === pts.length - 1 ? "#f97316" : "rgba(0,0,0,0.4)"} fontSize="9" fontFamily="sans-serif">
+        <text key={i} x={p.x} y={H - 4} textAnchor="middle" fill={i === pts.length - 1 ? "#f97316" : textFill} fontSize="9" fontFamily="sans-serif">
           {new Date(p.label).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })}
         </text>
       ))}
       <path d={areaD} fill="url(#rv-area)" />
       <path d={pathD} fill="none" stroke="url(#rv-line)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
       {pts.map((p, i) => (
-        <circle key={i} cx={p.x} cy={p.y} r={i === pts.length - 1 ? 5 : 3.5} fill="#fff" stroke="url(#rv-line)" strokeWidth="2" />
+        <circle key={i} cx={p.x} cy={p.y} r={i === pts.length - 1 ? 5 : 3.5} fill={dotFill} stroke="url(#rv-line)" strokeWidth="2" />
       ))}
     </svg>
   );
@@ -469,6 +479,9 @@ const ManagerReports: React.FC = () => {
     },
   ];
 
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   return (
     <>
     <div className="p-4 lg:p-6 space-y-5">
@@ -476,20 +489,20 @@ const ManagerReports: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl lg:text-2xl font-bold text-gray-800">Báo Cáo & Thống Kê</h1>
-          <p className="text-sm text-gray-800/40 mt-0.5">Phân tích doanh thu và hiệu suất rạp</p>
+          <h1 className="text-xl lg:text-2xl font-bold text-slate-800 dark:text-slate-100">Báo Cáo & Thống Kê</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Phân tích doanh thu và hiệu suất rạp</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => void fetchReports()}
-            className="w-9 h-9 flex items-center justify-center rounded-xl bg-white hover:bg-gray-100 text-gray-800/50 hover:text-gray-800 transition-all border border-gray-200"
+            className="w-9 h-9 flex items-center justify-center rounded-xl bg-white dark:bg-[#0f172a] hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all border border-slate-200/80 dark:border-slate-800 cursor-pointer shadow-xs"
           >
             <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
           </button>
           <button
             onClick={() => setExportDialogOpen(true)}
             disabled={exportingType !== null}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm disabled:opacity-50 transition-all shadow-lg shadow-emerald-500/20 hover:scale-[1.02]"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm disabled:opacity-50 transition-all shadow-lg shadow-emerald-500/20 hover:scale-[1.02] cursor-pointer"
           >
             {exportingType ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             {exportingType ? "Đang xuất..." : "Xuất File"}
@@ -499,15 +512,17 @@ const ManagerReports: React.FC = () => {
 
       {/* Period selector */}
       <div className="flex items-center gap-3">
-        <Calendar className="w-4 h-4 text-gray-800/40" />
-        <div className="flex gap-1 p-1 bg-white rounded-xl border border-gray-200">
+        <Calendar className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+        <div className="flex gap-1 p-1 bg-white dark:bg-[#0f172a] rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
           {PERIODS.map(p => (
             <button
               key={p.value}
               onClick={() => setPeriod(p.value)}
               className={cn(
-                "px-4 py-1.5 rounded-lg text-xs font-medium transition-all",
-                period === p.value ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20" : "text-gray-500 hover:text-gray-800"
+                "px-4 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                period === p.value
+                  ? "bg-orange-500 text-white shadow-md shadow-orange-500/20"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               )}
             >
               {p.label}
@@ -519,73 +534,86 @@ const ManagerReports: React.FC = () => {
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {loading
-          ? [...Array(4)].map((_, i) => <div key={i} className="h-28 rounded-2xl bg-white animate-pulse border border-gray-200" />)
+          ? [...Array(4)].map((_, i) => (
+              <div
+                key={i}
+                className="h-28 rounded-2xl bg-white dark:bg-slate-800/60 animate-pulse border border-slate-200/80 dark:border-slate-800"
+              />
+            ))
           : summaryCards.map(card => (
-            <div key={card.label} className={cn("p-5 rounded-2xl border bg-gradient-to-br hover:scale-[1.02] transition-all", card.bg, card.border)}>
-              <div className={cn("w-9 h-9 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-lg mb-3", card.color)}>
+            <div
+              key={card.label}
+              className={cn(
+                "p-5 rounded-2xl border transition-all duration-200 bg-white dark:bg-[#0f172a] bg-gradient-to-br",
+                card.bg,
+                card.border,
+                "shadow-xs hover:shadow-md"
+              )}
+            >
+              <div className={cn("w-9 h-9 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-md mb-3", card.color)}>
                 <card.icon className="w-4.5 h-4.5 text-white" />
               </div>
-              <p className="text-xs text-gray-800/50 uppercase tracking-wide mb-1">{card.label}</p>
-              <p className="text-xl font-bold text-gray-800 truncate">{card.value}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1 font-semibold">{card.label}</p>
+              <p className="text-xl font-bold text-slate-800 dark:text-slate-100 truncate">{card.value}</p>
             </div>
           ))
         }
       </div>
 
       {/* Revenue Chart */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5">
+      <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0f172a] p-5 shadow-xs">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-orange-400" />
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-orange-500 dark:text-orange-400" />
               Xu Hướng Doanh Thu
             </h2>
-            <p className="text-xs text-gray-800/40 mt-0.5">{period} ngày gần nhất</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{period} ngày gần nhất</p>
           </div>
           {!loading && revenueData.length > 0 && (
             <div className="text-right">
-              <p className="text-xs text-gray-800/40">Trung bình / ngày</p>
-              <p className="text-sm font-bold text-orange-400">{fmtCurrency(Math.round(totalRevenue / Math.max(period, 1)))}</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">Trung bình / ngày</p>
+              <p className="text-sm font-bold text-orange-500 dark:text-orange-400">{fmtCurrency(Math.round(totalRevenue / Math.max(period, 1)))}</p>
             </div>
           )}
         </div>
         {loading ? (
-          <div className="h-48 rounded-xl bg-gray-50 animate-pulse" />
+          <div className="h-48 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
         ) : revenueData.length === 0 ? (
-          <div className="h-48 flex items-center justify-center text-gray-800/30 text-sm">Chưa có dữ liệu doanh thu</div>
+          <div className="h-48 flex items-center justify-center text-slate-400 dark:text-slate-600 text-sm">Chưa có dữ liệu doanh thu</div>
         ) : (
-          <RevenueLineChart data={revenueData} height={200} />
+          <RevenueLineChart data={revenueData} height={200} isDark={isDark} />
         )}
       </div>
 
       {/* Revenue table by day */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-gray-800 mb-1 flex items-center gap-2">
-          <DollarSign className="w-4 h-4 text-orange-400" />
+      <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#0f172a] p-5 shadow-xs">
+        <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1 flex items-center gap-2">
+          <DollarSign className="w-4 h-4 text-orange-500 dark:text-orange-400" />
           Chi Tiết Theo Ngày
         </h2>
-        <p className="text-xs text-gray-800/40 mb-4">{period} ngày gần nhất</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">{period} ngày gần nhất</p>
         {loading ? (
-          <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-9 rounded-lg bg-gray-50 animate-pulse" />)}</div>
+          <div className="space-y-2">{[...Array(5)].map((_, i) => <div key={i} className="h-9 rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse" />)}</div>
         ) : revenueData.length === 0 ? (
-          <div className="h-32 flex items-center justify-center text-gray-800/30 text-sm">Chưa có dữ liệu</div>
+          <div className="h-32 flex items-center justify-center text-slate-400 dark:text-slate-600 text-sm">Chưa có dữ liệu</div>
         ) : (
           <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
             {[...revenueData].reverse().map((row, i) => {
               const ratio = totalRevenue > 0 ? (Number(row.revenue) || 0) / totalRevenue : 0;
               return (
-                <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors">
-                  <div className="w-20 text-xs text-gray-800/50 shrink-0">
+                <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                  <div className="w-20 text-xs text-slate-500 dark:text-slate-400 shrink-0">
                     {new Date(row.label).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })}
                   </div>
                   <div className="flex-1">
-                    <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-slate-200/70 dark:bg-slate-700 overflow-hidden">
                       <div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-500" style={{ width: `${ratio * 100}%` }} />
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="text-xs font-medium text-gray-800">{fmtCurrency(Number(row.revenue) || 0)}</div>
-                    <div className="text-xs text-gray-800/30">{row.booking_count} đơn</div>
+                    <div className="text-xs font-semibold text-slate-800 dark:text-slate-100">{fmtCurrency(Number(row.revenue) || 0)}</div>
+                    <div className="text-xs text-slate-400 dark:text-slate-500">{row.booking_count} đơn</div>
                   </div>
                 </div>
               );
@@ -597,16 +625,16 @@ const ManagerReports: React.FC = () => {
 
     {/* ── Export Dialog ── */}
     {exportDialogOpen && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-5 animate-in fade-in zoom-in-95">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs">
+        <div className="bg-white dark:bg-[#0f172a] rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-5 animate-in fade-in zoom-in-95 border border-slate-200/80 dark:border-slate-800">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <Download className="w-5 h-5 text-emerald-500" />
               Xuất File Báo Cáo
             </h3>
             <button
               onClick={() => setExportDialogOpen(false)}
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
             >
               ✕
             </button>
@@ -614,17 +642,17 @@ const ManagerReports: React.FC = () => {
 
           {/* Period selector */}
           <div className="space-y-3">
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Chọn khoảng thời gian</label>
+            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Chọn khoảng thời gian</label>
             <div className="grid grid-cols-3 gap-3">
               {EXPORT_PERIODS.map((ep) => (
                 <button
                   key={ep.value}
                   onClick={() => setExportPeriod(ep.value)}
                   className={cn(
-                    "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all font-medium",
+                    "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all font-medium cursor-pointer",
                     exportPeriod === ep.value
-                      ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm"
-                      : "border-gray-200 hover:border-gray-300 text-gray-500 hover:text-gray-700"
+                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 shadow-xs"
+                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                   )}
                 >
                   <CalendarDays className="w-5 h-5" />
@@ -635,19 +663,19 @@ const ManagerReports: React.FC = () => {
           </div>
 
           {/* Selected range info */}
-          <div className="rounded-xl bg-gray-50 border border-gray-200 p-3 text-sm">
-            <span className="text-gray-500">Sẽ xuất dữ liệu: </span>
-            <span className="font-semibold text-gray-800">
+          <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-3 text-sm">
+            <span className="text-slate-500 dark:text-slate-400">Sẽ xuất dữ liệu: </span>
+            <span className="font-semibold text-slate-800 dark:text-slate-200">
               {exportPeriod} ngày gần nhất ({computeDateRange(exportPeriod).from} → {computeDateRange(exportPeriod).to})
             </span>
           </div>
 
           {/* Action buttons */}
-          <div className="border-t border-gray-200 pt-4 flex gap-3">
+          <div className="border-t border-slate-200/80 dark:border-slate-800 pt-4 flex gap-3">
             <button
               onClick={() => void exportTransactionsExcel()}
               disabled={exportingType !== null}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm disabled:opacity-50 transition-all shadow-lg shadow-emerald-500/20"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm disabled:opacity-50 transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
             >
               {exportingType === "excel" ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
               {exportingType === "excel" ? "Đang xuất..." : "Xuất Excel"}
@@ -655,7 +683,7 @@ const ManagerReports: React.FC = () => {
             <button
               onClick={() => void exportRevenueReportPdf()}
               disabled={exportingType !== null}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-medium text-sm hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-orange-500/20"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-medium text-sm hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-orange-500/20 cursor-pointer"
             >
               {exportingType === "pdf" ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
               {exportingType === "pdf" ? "Đang xuất..." : "Xuất Báo Cáo PDF"}

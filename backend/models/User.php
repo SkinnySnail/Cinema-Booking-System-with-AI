@@ -426,19 +426,22 @@ class User {
      */
     public function assignManagerToCinema($userId, $cinemaId) {
         try {
-            // Remove them from any other cinema first
-            $removeQuery = "UPDATE cinemas SET manager_id = NULL WHERE manager_id = :user_id";
-            $removeStmt = $this->db->prepare($removeQuery);
-            $removeStmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
-            $removeStmt->execute();
+            // 1. Lưu vào bảng cinema_staff để hỗ trợ 1 rạp có NHIỀU manager cùng làm việc
+            $this->assignStaffToCinema($userId, $cinemaId);
+
+            // 2. Nếu rạp này chưa có General Manager (cinemas.manager_id IS NULL), cập nhật để tương thích ngược
+            $checkStmt = $this->db->prepare("SELECT manager_id FROM cinemas WHERE id = :cid");
+            $checkStmt->execute([':cid' => $cinemaId]);
+            $currentManager = $checkStmt->fetchColumn();
+
+            if (empty($currentManager) || (int)$currentManager === (int)$userId) {
+                $stmt = $this->db->prepare("UPDATE cinemas SET manager_id = :user_id WHERE id = :cinema_id");
+                $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+                $stmt->bindParam(':cinema_id', $cinemaId, PDO::PARAM_INT);
+                $stmt->execute();
+            }
             
-            // Assign to new cinema
-            $query = "UPDATE cinemas SET manager_id = :user_id WHERE id = :cinema_id";
-            $stmt = $this->db->prepare($query);
-            $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
-            $stmt->bindParam(':cinema_id', $cinemaId, PDO::PARAM_INT);
-            
-            return $stmt->execute();
+            return true;
         } catch (PDOException $e) {
             error_log("User AssignManagerToCinema Error: " . $e->getMessage());
             return false;

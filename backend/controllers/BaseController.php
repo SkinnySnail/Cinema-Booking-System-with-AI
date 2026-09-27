@@ -19,11 +19,12 @@ class BaseController{
     public static function authorizeUserId($userId, $returnBoolean = false) {
         $authUserId = (int)($_REQUEST['auth_user_id'] ?? 0);
         $authRole = $_REQUEST['auth_user_role'] ?? null;
+        $authRoleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
 
-        $isAdmin = $authRole === 'Admin' || $authRole === 'Manager' || $authRole === 'Staff';
+        $isPrivileged = $authRole === 'Admin' || $authRoleId === 5 || $authRole === 'Manager' || $authRoleId === 4 || $authRole === 'Staff' || $authRoleId === 3;
         $isSelf = $authUserId === $userId;
 
-        if ($isAdmin || $isSelf) {
+        if ($isPrivileged || $isSelf) {
             if ($returnBoolean) return true;
             return;
         }
@@ -37,7 +38,8 @@ class BaseController{
     protected function isAdmin(): bool
     {
         $authRole = $_REQUEST['auth_user_role'] ?? null;
-        return $authRole === 'Admin';
+        $authRoleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
+        return $authRole === 'Admin' || $authRoleId === 5;
     }
 
     /**
@@ -46,7 +48,8 @@ class BaseController{
     protected function isManager(): bool
     {
         $authRole = $_REQUEST['auth_user_role'] ?? null;
-        return $authRole === 'Manager';
+        $authRoleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
+        return $authRole === 'Manager' || $authRoleId === 4;
     }
 
     /**
@@ -55,7 +58,8 @@ class BaseController{
     protected function isAdminOrManager(): bool
     {
         $authRole = $_REQUEST['auth_user_role'] ?? null;
-        return $authRole === 'Admin' || $authRole === 'Manager';
+        $authRoleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
+        return $authRole === 'Admin' || $authRoleId === 5 || $authRole === 'Manager' || $authRoleId === 4;
     }
 
     /**

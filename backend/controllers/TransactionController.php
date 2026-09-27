@@ -101,10 +101,21 @@ class TransactionController extends BaseController
                 $status = $result['status'] ?? 'Failed';
                 $bookingId = $result['booking_id'] ?? null;
 
+                $isPos = false;
+                if ($bookingId) {
+                    $booking = $this->transactionService->getBookingById((int)$bookingId);
+                    if ($booking && !empty($booking['guest_customer_id'])) {
+                        $isPos = true;
+                    }
+                }
+
                 // Nếu giao dịch thất bại (user hủy, quay lại, lỗi), redirect sang trang thất bại
                 if ($status !== 'Success') {
                     $returnUrl = $frontendUrl . '/booking/failed';
                     $params = ['status' => 'Failed', 'gateway' => 'VNPay'];
+                    if ($isPos) {
+                        $params['is_pos'] = '1';
+                    }
                     if ($transactionCode) {
                         $params['transaction_code'] = $transactionCode;
                     }
@@ -120,6 +131,9 @@ class TransactionController extends BaseController
                     'status' => $status,
                     'gateway' => 'VNPay'
                 ];
+                if ($isPos) {
+                    $params['is_pos'] = '1';
+                }
                 if ($bookingId) {
                     $params['booking_id'] = $bookingId;
                 }
@@ -138,7 +152,21 @@ class TransactionController extends BaseController
                 // Redirect user to the frontend booking failed page on failure
                 $frontendUrl = getenv('FRONTEND_URL') ?: 'http://localhost:8080';
                 $returnUrl = $frontendUrl . '/booking/failed';
-                $location = $returnUrl . (strpos($returnUrl, '?') === false ? '?' : '&') . 'status=Failed';
+                $params = ['status' => 'Failed', 'gateway' => 'VNPay'];
+                $txnRef = $data['vnp_TxnRef'] ?? null;
+                if ($txnRef) {
+                    try {
+                        $stmt = $this->db->prepare("SELECT b.guest_customer_id FROM transactions t JOIN bookings b ON b.id = t.booking_id WHERE t.transaction_code = :code LIMIT 1");
+                        $stmt->execute([':code' => $txnRef]);
+                        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                        if ($row && !empty($row['guest_customer_id'])) {
+                            $params['is_pos'] = '1';
+                        }
+                    } catch (Exception $ex) {
+                        // ignore
+                    }
+                }
+                $location = $returnUrl . '?' . http_build_query($params);
                 header('Location: ' . $location);
                 exit;
             }
@@ -301,8 +329,9 @@ class TransactionController extends BaseController
     {
         $authUserId = (int) ($_REQUEST['auth_user_id'] ?? 0);
         $authRole = $_REQUEST['auth_user_role'] ?? null;
+        $authRoleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
 
-        if ($authRole === 'Admin' || $authRole === 'Manager' || $authRole === 'Staff') {
+        if ($authRole === 'Admin' || $authRoleId === 5 || $authRole === 'Manager' || $authRoleId === 4 || $authRole === 'Staff' || $authRoleId === 3) {
             return;
         }
 

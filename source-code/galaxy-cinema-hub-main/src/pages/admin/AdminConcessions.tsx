@@ -545,6 +545,66 @@ const AdminConcessions: React.FC = () => {
     }
   };
 
+  const handleDownloadTemplate = () => {
+    try {
+      const templateData = [
+        {
+          "Tên sản phẩm": "Combo 1 (Bắp M + Nước M)",
+          "Giá (VNĐ)": 75000,
+          "Danh mục (Combo/Drink/Snack)": "Combo",
+          "Link Ảnh sản phẩm (URL)": "https://example.com/combo1.jpg",
+        },
+        {
+          "Tên sản phẩm": "Combo 2 (Bắp L + 2 Nước M)",
+          "Giá (VNĐ)": 120000,
+          "Danh mục (Combo/Drink/Snack)": "Combo",
+          "Link Ảnh sản phẩm (URL)": "https://example.com/combo2.jpg",
+        },
+        {
+          "Tên sản phẩm": "Coca Cola (L)",
+          "Giá (VNĐ)": 40000,
+          "Danh mục (Combo/Drink/Snack)": "Drink",
+          "Link Ảnh sản phẩm (URL)": "https://example.com/coca.jpg",
+        },
+        {
+          "Tên sản phẩm": "Bắp Rang Bơ (L)",
+          "Giá (VNĐ)": 70000,
+          "Danh mục (Combo/Drink/Snack)": "Popcorn",
+          "Link Ảnh sản phẩm (URL)": "https://example.com/popcorn.jpg",
+        },
+        {
+          "Tên sản phẩm": "Khoai Tây Lắc Phô Mai",
+          "Giá (VNĐ)": 45000,
+          "Danh mục (Combo/Drink/Snack)": "Snack",
+          "Link Ảnh sản phẩm (URL)": "https://example.com/snack.jpg",
+        },
+      ];
+
+      const worksheet = XLSX.utils.json_to_sheet(templateData);
+      worksheet["!cols"] = [
+        { wch: 35 }, // Tên sản phẩm
+        { wch: 15 }, // Giá
+        { wch: 30 }, // Danh mục
+        { wch: 35 }, // Link ảnh
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "DanhSachBapNuoc");
+      XLSX.writeFile(workbook, "mau_nhap_bap_nuoc.xlsx");
+      toast({
+        title: "📥 Đã tạo file mẫu",
+        description: "File mẫu 'mau_nhap_bap_nuoc.xlsx' đã được tải về máy của bạn.",
+      });
+    } catch (error: unknown) {
+      toast({
+        title: "Lỗi tạo file mẫu",
+        description:
+          error instanceof Error ? error.message : "Không thể tạo file mẫu excel",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -563,6 +623,16 @@ const AdminConcessions: React.FC = () => {
             ref={fileInputRef}
             onChange={handleFileUpload}
           />
+          <Button
+            variant="outline"
+            className="flex items-center gap-2"
+            onClick={handleDownloadTemplate}
+            title="Tải file Excel mẫu để nhập bắp nước"
+          >
+            <Download className="w-4 h-4" />
+            Tạo file mẫu
+          </Button>
+
           <Button
             variant="outline"
             className="flex items-center gap-2"

@@ -18,12 +18,20 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { API_ENDPOINTS, API_BASE_URL } from "@/lib/api-config";
+import { useAuth } from "@/contexts/AppContext";
 
 const BookingSuccessPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
+  const { user } = useAuth();
+
+  const isPosCallback =
+    searchParams.get("is_pos") === "1" ||
+    searchParams.has("pos") ||
+    user?.role === "Staff" ||
+    user?.role === "Manager";
 
   const urlStatus = searchParams.get("status");
   const hasUrlParams =
@@ -41,10 +49,26 @@ const BookingSuccessPage: React.FC = () => {
 
   useEffect(() => {
     if (isFailedCallback) {
-      navigate("/booking/failed", { replace: true });
+      const failedParams = new URLSearchParams();
+      if (isPosCallback) failedParams.set("is_pos", "1");
+      const failQuery = failedParams.toString() ? `?${failedParams.toString()}` : "";
+      navigate(`/booking/failed${failQuery}`, { replace: true });
       return;
     }
     if (isGatewaySuccessCallback) {
+      if (isPosCallback) {
+        if (window.opener && !window.opener.closed) {
+          window.close();
+          return;
+        }
+        toast({
+          title: "Thanh toán tại quầy thành công!",
+          description: "Giao dịch POS đã được xác nhận thành công.",
+        });
+        // Never navigate staff to customer /bookings!
+        return;
+      }
+
       if (window.opener && !window.opener.closed) {
         window.close();
         return;
@@ -52,18 +76,16 @@ const BookingSuccessPage: React.FC = () => {
       toast({
         title: "Thanh toán thành công!",
         description:
-          "Vé đã được xác nhận. Bạn có thể xem vé trong mục Lịch sử đặt vé.",
+          "Vé đã được xác nhận. Bạn có thể xem vé hoặc lưu ảnh vé dưới đây.",
       });
-      navigate("/bookings", { replace: true });
     }
-  }, [isFailedCallback, isGatewaySuccessCallback, navigate, toast]);
+  }, [isFailedCallback, isGatewaySuccessCallback, isPosCallback, navigate, toast]);
 
   const [bookingData, setBookingData] = useState<any>(location.state || null);
   const [isLoading, setIsLoading] = useState(
     !location.state &&
       searchParams.has("booking_id") &&
-      !isFailedCallback &&
-      !isGatewaySuccessCallback,
+      !isFailedCallback,
   );
 
   useEffect(() => {
@@ -376,22 +398,51 @@ const BookingSuccessPage: React.FC = () => {
                 <Check className="w-10 h-10 text-white stroke-[3]" />
               </div>
               <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white mb-3">
-                Giao Dịch Thành Công!
+                {isPosCallback ? "Thanh Toán Tại Quầy Thành Công!" : "Giao Dịch Thành Công!"}
               </h1>
               <p className="text-slate-600 dark:text-zinc-300 text-base leading-relaxed mb-6">
-                Chân thành cảm ơn quý khách. Vé của bạn đã được xác nhận thành công trên hệ thống.
+                {isPosCallback
+                  ? "Giao dịch bán vé POS đã hoàn tất và được xác nhận trên hệ thống. Vé đã được ghi nhận."
+                  : "Chân thành cảm ơn quý khách. Vé của bạn đã được xác nhận thành công trên hệ thống."}
               </p>
               <div className="space-y-3">
-                <Link to="/bookings" className="block">
-                  <Button className="w-full h-12 rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-extrabold shadow-lg shadow-orange-500/25">
-                    Xem Lịch Sử Đặt Vé
-                  </Button>
-                </Link>
-                <Link to="/" className="block">
-                  <Button variant="outline" className="w-full h-12 rounded-xl border-slate-200 dark:border-white/10">
-                    Về Trang Chủ
-                  </Button>
-                </Link>
+                {isPosCallback ? (
+                  <>
+                    <Button
+                      onClick={() => navigate("/staff/pos")}
+                      className="w-full h-12 rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-extrabold shadow-lg shadow-orange-500/25"
+                    >
+                      Quay Lại Bán Vé Tại Quầy
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => navigate("/staff/payment-history")}
+                      className="w-full h-12 rounded-xl border-slate-200 dark:border-white/10"
+                    >
+                      Xem Lịch Sử Thanh Toán POS
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => window.close()}
+                      className="w-full h-11 text-muted-foreground hover:text-foreground"
+                    >
+                      Đóng cửa sổ này
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Link to="/bookings" className="block">
+                      <Button className="w-full h-12 rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-extrabold shadow-lg shadow-orange-500/25">
+                        Xem Lịch Sử Đặt Vé
+                      </Button>
+                    </Link>
+                    <Link to="/" className="block">
+                      <Button variant="outline" className="w-full h-12 rounded-xl border-slate-200 dark:border-white/10">
+                        Về Trang Chủ
+                      </Button>
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -428,6 +479,34 @@ const BookingSuccessPage: React.FC = () => {
       <main className="flex-1 container max-w-xl mx-auto px-4 py-8 relative flex flex-col items-center">
         {/* Subtle Ambient Top Glow matching standard cinema pages */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 max-w-5xl h-64 bg-primary/[0.04] blur-3xl pointer-events-none -z-10 rounded-full" />
+
+        {/* POS notification banner if opened by staff or POS flow */}
+        {isPosCallback && (
+          <div className="w-full mb-4 p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-between gap-3 text-xs sm:text-sm text-blue-600 dark:text-blue-400 font-semibold shadow-xs">
+            <span className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 shrink-0 text-blue-500" />
+              <span>Giao dịch bán vé tại quầy (POS) đã hoàn tất và in bill</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate("/staff/pos")}
+                className="h-8 text-xs border-blue-500/40 hover:bg-blue-500/10 cursor-pointer"
+              >
+                Về Bán Vé
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => window.close()}
+                className="h-8 text-xs hover:bg-blue-500/10 cursor-pointer"
+              >
+                Đóng tab
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Top Header Card: 3-Step Completion Stepper */}
         <div className="w-full mb-6 rounded-2xl bg-card border border-border p-4 sm:p-5 shadow-xs">
@@ -699,25 +778,48 @@ const BookingSuccessPage: React.FC = () => {
 
           {/* Secondary Actions Row */}
           <div className="grid grid-cols-2 gap-3">
-            <Link to="/bookings" className="block">
-              <Button
-                variant="outline"
-                className="w-full h-11 rounded-xl border-border hover:bg-muted text-foreground font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-xs"
-              >
-                <Ticket className="w-4 h-4 text-primary" />
-                <span>Xem Vé Của Tôi</span>
-              </Button>
-            </Link>
+            {isPosCallback ? (
+              <>
+                <Button
+                  onClick={() => navigate("/staff/pos")}
+                  className="w-full h-11 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-xs"
+                >
+                  <Ticket className="w-4 h-4" />
+                  <span>Bán Vé Mới</span>
+                </Button>
 
-            <Link to="/" className="block">
-              <Button
-                variant="outline"
-                className="w-full h-11 rounded-xl border-border hover:bg-muted text-muted-foreground hover:text-foreground font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-xs"
-              >
-                <Home className="w-4 h-4" />
-                <span>Về Trang Chủ</span>
-              </Button>
-            </Link>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/staff/payment-history")}
+                  className="w-full h-11 rounded-xl border-border hover:bg-muted text-foreground font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-xs"
+                >
+                  <Clock className="w-4 h-4" />
+                  <span>Lịch Sử POS</span>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link to="/bookings" className="block">
+                  <Button
+                    variant="outline"
+                    className="w-full h-11 rounded-xl border-border hover:bg-muted text-foreground font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <Ticket className="w-4 h-4 text-primary" />
+                    <span>Xem Vé Của Tôi</span>
+                  </Button>
+                </Link>
+
+                <Link to="/" className="block">
+                  <Button
+                    variant="outline"
+                    className="w-full h-11 rounded-xl border-border hover:bg-muted text-muted-foreground hover:text-foreground font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <Home className="w-4 h-4" />
+                    <span>Về Trang Chủ</span>
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </main>

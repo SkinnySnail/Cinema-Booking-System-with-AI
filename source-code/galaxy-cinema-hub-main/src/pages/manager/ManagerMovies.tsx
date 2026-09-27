@@ -557,7 +557,7 @@ const ManagerMovies: React.FC = () => {
   };
 
   // ── Movie Form (shared between Add & Edit) ──
-  const MovieForm = () => (
+  const renderMovieForm = () => (
     <div className="grid gap-4 py-4">
       <div className="grid gap-2">
         <Label>Tên phim *</Label>
@@ -984,7 +984,7 @@ const ManagerMovies: React.FC = () => {
               Điền thông tin phim để thêm vào hệ thống
             </DialogDescription>
           </DialogHeader>
-          <MovieForm />
+          {renderMovieForm()}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddModal(false)}>
               Hủy
@@ -1010,7 +1010,7 @@ const ManagerMovies: React.FC = () => {
               Cập nhật thông tin phim: {selectedMovie?.title}
             </DialogDescription>
           </DialogHeader>
-          <MovieForm />
+          {renderMovieForm()}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEditModal(false)}>
               Hủy

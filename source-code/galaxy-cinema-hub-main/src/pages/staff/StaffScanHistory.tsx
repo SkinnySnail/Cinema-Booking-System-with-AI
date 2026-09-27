@@ -5,9 +5,27 @@ import { Input } from "@/components/ui/input";
 import { Loader2, History, RefreshCcw, Download } from "lucide-react";
 import { TicketService } from "@/services/ticket.service";
 import { TicketScanHistoryItem } from "@/types/api";
+import { useAuth } from "@/contexts/AppContext";
+import StaffAccessDenied from "@/components/staff/StaffAccessDenied";
 import * as XLSX from "xlsx";
 
 const StaffScanHistory: React.FC = () => {
+  const { user } = useAuth();
+  const [accessDenied, setAccessDenied] = useState(false);
+
+  const hasScanHistoryPermission = React.useMemo(() => {
+    if (!user) return true;
+    if (user.role === "admin" || user.base_role === "admin") return true;
+
+    if (user.permissions && Array.isArray(user.permissions)) {
+      return (
+        user.permissions.includes("tickets.scan") ||
+        user.permissions.includes("tickets.view_all")
+      );
+    }
+    return false;
+  }, [user]);
+
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<TicketScanHistoryItem[]>([]);
   const [error, setError] = useState<string>("");
@@ -21,15 +39,30 @@ const StaffScanHistory: React.FC = () => {
   });
 
   const fetchHistory = async (nextFilters = filters) => {
+    if (!hasScanHistoryPermission) {
+      setAccessDenied(true);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError("");
       const res = await TicketService.getScanHistory(100, 0, nextFilters);
       setItems(res.data?.items || []);
+      setAccessDenied(false);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Không thể tải lịch sử quét";
-      setError(message);
+      if (
+        message.includes("Không có quyền") ||
+        message.includes("403") ||
+        message.includes("Insufficient")
+      ) {
+        setAccessDenied(true);
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -95,6 +128,17 @@ const StaffScanHistory: React.FC = () => {
     const exportDate = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(workbook, `lich-su-quet-ve-${exportDate}.xlsx`);
   };
+
+  if (!hasScanHistoryPermission || accessDenied) {
+    return (
+      <StaffAccessDenied
+        title="Bạn không có quyền Xem Lịch Sử Quét Vé"
+        requiredPermission="tickets.scan"
+        returnPath="/staff/pos"
+        returnLabel="Chuyển sang Bán Vé"
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">

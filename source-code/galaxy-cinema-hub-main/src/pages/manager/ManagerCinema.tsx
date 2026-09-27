@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Building2, Save, Loader2, MapPin, Phone, Map } from "lucide-react";
+import { Building2, Save, Loader2, MapPin, Phone, Map, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { API_ENDPOINTS, apiCall } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import LocationPickerMap from "@/components/cinema/LocationPickerMap";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface CinemaDetail {
   id: number;
@@ -25,6 +26,8 @@ interface CinemaDetail {
 
 const ManagerCinema: React.FC = () => {
   const { toast } = useToast();
+  const { hasPermission } = usePermissions();
+  const canUpdate = hasPermission("cinemas.update");
   const [cinema, setCinema] = useState<CinemaDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -156,7 +159,25 @@ const ManagerCinema: React.FC = () => {
   const addressForSearch =
     [formData.street, formData.district, formData.city]
       .filter(Boolean)
+      .map((s) => s.trim())
+      .filter(Boolean)
       .join(", ") || formData.address;
+
+  if (!canUpdate) {
+    return (
+      <div className="p-6">
+        <div className="flex flex-col items-center justify-center p-12 text-center rounded-2xl border border-destructive/20 bg-destructive/5 space-y-4">
+          <AlertTriangle className="w-12 h-12 text-destructive" />
+          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+            Truy Cập Bị Từ Chối
+          </h2>
+          <p className="text-slate-500 max-w-md text-sm">
+            Vai trò hiện tại của bạn không có quyền cập nhật thông tin rạp (yêu cầu quyền: <code className="text-destructive font-mono font-bold">cinemas.update</code>).
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -304,7 +325,7 @@ const ManagerCinema: React.FC = () => {
             <LocationPickerMap
               lat={formData.lat}
               lng={formData.lng}
-              onChange={(lat, lng) => setFormData({ ...formData, lat, lng })}
+              onChange={(lat, lng) => setFormData(prev => ({ ...prev, lat, lng }))}
               className="h-[400px] rounded-lg"
               addressToSearch={addressForSearch}
             />

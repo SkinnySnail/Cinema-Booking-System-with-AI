@@ -13,11 +13,12 @@ class NotificationController extends BaseController {
         try {
             $authUserId = (int)($_REQUEST['auth_user_id'] ?? 0);
             $authRole = (string)($_REQUEST['auth_user_role'] ?? '');
+            $authRoleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
             $requestedUserId = (int)$userId;
 
             // Prevent path/user mismatch from hiding notifications for normal users.
             // Admin/Manager may query arbitrary user ids; others always query self.
-            if ($authRole === 'Admin' || $authRole === 'Manager') {
+            if ($authRole === 'Admin' || $authRoleId === 5 || $authRole === 'Manager' || $authRoleId === 4) {
                 $effectiveUserId = $requestedUserId > 0 ? $requestedUserId : $authUserId;
             } else {
                 $effectiveUserId = $authUserId;

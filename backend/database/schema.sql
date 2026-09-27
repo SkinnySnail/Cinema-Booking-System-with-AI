@@ -16,11 +16,21 @@ USE galaxy_cinema;
 -- NHÓM 1: NGƯỜI DÙNG, ĐỊNH DANH & LOYALTY
 -- ============================================
 
--- Bảng Vai Trò
+-- Bảng Vai Trò (Hỗ trợ Dynamic RBAC)
 CREATE TABLE roles (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE COMMENT 'Guest/Member/Staff/Manager/Admin',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    name VARCHAR(50) NOT NULL UNIQUE COMMENT 'Tên vai trò / Mã hệ thống',
+    code VARCHAR(50) NULL UNIQUE COMMENT 'Mã định danh vai trò (vd: SYSTEM_ADMIN, STAFF_TICKET)',
+    display_name VARCHAR(100) NOT NULL COMMENT 'Tên hiển thị tiếng Việt',
+    description TEXT NULL COMMENT 'Mô tả trách nhiệm của vai trò',
+    base_role ENUM('admin', 'manager', 'staff', 'member', 'guest') NOT NULL DEFAULT 'staff' COMMENT 'Nhóm tài khoản tương thích',
+    is_system TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=Vai trò hệ thống mặc định (Chỉ đọc), 0=Vai trò tùy chỉnh',
+    is_active TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=Đang kích hoạt, 0=Tạm khóa',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_base_role (base_role),
+    INDEX idx_is_system (is_system),
+    INDEX idx_is_active (is_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Bảng Quyền Hạn Hệ Thống
@@ -87,6 +97,41 @@ CREATE TABLE user_profiles (
     FOREIGN KEY (membership_id) REFERENCES memberships(id) ON DELETE SET NULL,
     INDEX idx_dob (dob),
     INDEX idx_membership (membership_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Bảng Phân Bổ Đa Vai Trò Cho Người Dùng (Multi-Role Mapping)
+CREATE TABLE user_roles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL COMMENT 'ID người dùng',
+    role_id INT NOT NULL COMMENT 'ID vai trò được gán',
+    is_primary TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=Vai trò cơ sở mặc định, 0=Vai trò bổ sung',
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    assigned_by INT NULL COMMENT 'ID admin thực hiện gán vai trò',
+    reason VARCHAR(255) NULL COMMENT 'Lý do phân bổ vai trò (bắt buộc cho audit)',
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_user_role (user_id, role_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_role_id (role_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Bảng Nhật Ký Kiểm Toán Phân Quyền (Append-Only Audit Trail)
+CREATE TABLE permission_audit_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    actor_id INT NULL COMMENT 'ID người thực hiện',
+    actor_name VARCHAR(255) NULL COMMENT 'Tên/Email người thực hiện',
+    action VARCHAR(50) NOT NULL COMMENT 'ROLE_CREATE, ROLE_UPDATE, ROLE_DELETE, ROLE_PERMISSIONS_SYNC, USER_ROLES_ASSIGN',
+    target_type VARCHAR(50) NOT NULL COMMENT 'ROLE hoặc USER',
+    target_id INT NULL COMMENT 'ID của vai trò hoặc người dùng đích',
+    target_name VARCHAR(255) NULL COMMENT 'Tên đối tượng bị tác động',
+    reason TEXT NULL COMMENT 'Lý do thay đổi',
+    old_value JSON NULL COMMENT 'Dữ liệu trước thay đổi',
+    new_value JSON NULL COMMENT 'Dữ liệu sau thay đổi',
+    ip_address VARCHAR(45) NULL COMMENT 'Địa chỉ IP',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_action (action),
+    INDEX idx_created_at (created_at),
+    INDEX idx_target (target_type, target_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Bảng Lịch Sử Tích Điểm (MỚI - Audit Trail)
@@ -508,12 +553,12 @@ CREATE TABLE system_configs (
 -- DỮ LIỆU MẶC ĐỊNH: ROLES, MEMBERSHIPS, PERMISSIONS
 -- ============================================
 
-INSERT INTO roles (id, name) VALUES
-(1, 'Guest'),
-(2, 'Member'),
-(3, 'Staff'),
-(4, 'Manager'),
-(5, 'Admin');
+INSERT INTO roles (id, name, code, display_name, description, base_role, is_system, is_active) VALUES
+(1, 'Guest', 'SYSTEM_GUEST', 'Khách vãng lai', 'Khách vãng lai chưa đăng nhập, chỉ xem phim, lịch chiếu và thông tin công khai', 'guest', 1, 1),
+(2, 'Member', 'SYSTEM_MEMBER', 'Thành viên', 'Khách hàng có tài khoản thành viên, đặt vé trực tuyến, tích điểm và nhận ưu đãi', 'member', 1, 1),
+(3, 'Staff', 'SYSTEM_STAFF', 'Nhân viên quầy', 'Nhân viên vận hành tại cụm rạp: bán vé tại quầy, quét vé và quản lý bắp nước', 'staff', 1, 1),
+(4, 'Manager', 'SYSTEM_MANAGER', 'Quản lý rạp', 'Quản lý cụm rạp: xếp lịch chiếu, quản lý phòng chiếu, thống kê doanh thu cơ sở', 'manager', 1, 1),
+(5, 'Admin', 'SYSTEM_ADMIN', 'Quản trị viên tối cao', 'Quản trị viên toàn quyền hệ thống (Super Admin). Có quyền truy cập tất cả tính năng', 'admin', 1, 1);
 
 INSERT INTO memberships (id, rank_name, min_points_required, discount_rate) VALUES
 (1, 'Bronze', 0, 0.00),

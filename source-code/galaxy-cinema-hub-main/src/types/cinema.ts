@@ -6,7 +6,7 @@ export type MembershipTier = "bronze" | "silver" | "gold" | "platinum";
 
 export type SeatType = "standard" | "vip" | "couple";
 
-export type SeatStatus = "available" | "selected" | "held" | "sold" | "maintenance";
+export type SeatStatus = "available" | "selected" | "held" | "sold" | "maintenance" | "inactive";
 
 export type TicketStatus = "holding" | "sold" | "used" | "refunded";
 
@@ -29,6 +29,10 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  base_role?: string;
+  role_id?: number;
+  roles?: any[];
+  permissions?: string[];
   phone?: string;
   dob?: string;
   avatar?: string;

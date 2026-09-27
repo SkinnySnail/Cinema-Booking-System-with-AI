@@ -116,19 +116,27 @@ const Header: React.FC = () => {
                   <DropdownMenuItem asChild>
                     <Link to="/bookings">Lịch sử đặt vé</Link>
                   </DropdownMenuItem>
-                  {user?.role === "admin" && (
+                  {/* Admin Portal */}
+                  {(user?.role === "admin" || user?.base_role === "admin") && (
                     <DropdownMenuItem asChild>
                       <Link to="/admin">Admin Dashboard</Link>
                     </DropdownMenuItem>
                   )}
-                  {user?.role === "staff" && (
-                    <DropdownMenuItem asChild>
-                      <Link to="/staff">Staff Portal</Link>
-                    </DropdownMenuItem>
-                  )}
-                  {user?.role === "manager" && (
+                  {/* Manager Portal */}
+                  {(user?.role === "manager" || user?.base_role === "manager" || user?.role === "admin" || user?.base_role === "admin") && (
                     <DropdownMenuItem asChild>
                       <Link to="/manager">Quản Lý Rạp</Link>
+                    </DropdownMenuItem>
+                  )}
+                  {/* Staff Portal */}
+                  {(user?.role === "staff" ||
+                    user?.base_role === "staff" ||
+                    user?.role === "admin" ||
+                    user?.base_role === "admin" ||
+                    user?.permissions?.includes("tickets.scan") ||
+                    user?.permissions?.includes("bookings.pos")) && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/staff">Staff Portal</Link>
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />

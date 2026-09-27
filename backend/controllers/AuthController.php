@@ -287,58 +287,23 @@ class AuthController {
                 return Response::error('Email hoặc mật khẩu không đúng', 401);
             }
             
-            $roleMap = [
-                1 => 'Guest',
-                2 => 'Member',
-                3 => 'Staff',
-                4 => 'Manager',
-                5 => 'Admin',
-            ];
-            $roleName = $roleMap[(int)$user['role_id']] ?? 'Guest';
+            // Phân giải vai trò thực tế (hỗ trợ phân quyền động và đa vai trò)
+            $roleInfo = $this->resolveUserRolesAndCinema($user);
+            $roleName = $roleInfo['roleName'];
+            $baseRole = $roleInfo['baseRole'];
+            $cinemaId = $roleInfo['cinemaId'];
+            $cinemaName = $roleInfo['cinemaName'];
+            $userRoles = $roleInfo['userRoles'];
+            $permissions = $roleInfo['permissionCodes'];
 
-            // Lấy cinema_id cho Manager hoặc Staff
-            $cinemaId = null;
-            $cinemaName = null;
-            $roleId = (int)$user['role_id'];
-            if ($roleId === 4) {
-                // Manager → lấy từ cinemas.manager_id
-                try {
-                    $db = Database::getInstance()->getConnection();
-                    $cinemaStmt = $db->prepare("SELECT id, name FROM cinemas WHERE manager_id = :uid LIMIT 1");
-                    $cinemaStmt->execute([':uid' => $user['id']]);
-                    $cinemaRow = $cinemaStmt->fetch(PDO::FETCH_ASSOC);
-                    if ($cinemaRow) {
-                        $cinemaId   = (int)$cinemaRow['id'];
-                        $cinemaName = $cinemaRow['name'];
-                    }
-                } catch (Exception $ignore) {}
-            } elseif ($roleId === 3) {
-                // Staff → lấy từ cinema_staff
-                try {
-                    $db = Database::getInstance()->getConnection();
-                    $cinemaStmt = $db->prepare("
-                        SELECT c.id, c.name
-                        FROM cinema_staff cs
-                        JOIN cinemas c ON c.id = cs.cinema_id
-                        WHERE cs.user_id = :uid
-                        LIMIT 1
-                    ");
-                    $cinemaStmt->execute([':uid' => $user['id']]);
-                    $cinemaRow = $cinemaStmt->fetch(PDO::FETCH_ASSOC);
-                    if ($cinemaRow) {
-                        $cinemaId   = (int)$cinemaRow['id'];
-                        $cinemaName = $cinemaRow['name'];
-                    }
-                } catch (Exception $ignore) {}
-            }
-
-            // Generate JWT token (include cinema_id for Manager)
+            // Generate JWT token (include base_role, cinema_id)
             $jwtPayload = [
-                'user_id'  => $user['id'],
-                'email'    => $user['email'],
-                'role_id'  => $user['role_id'],
-                'role'     => $roleName,
-                'exp'      => time() + Config::$jwt_expiration,
+                'user_id'   => $user['id'],
+                'email'     => $user['email'],
+                'role_id'   => $user['role_id'],
+                'role'      => $roleName,
+                'base_role' => $baseRole,
+                'exp'       => time() + Config::$jwt_expiration,
             ];
             if ($cinemaId !== null) {
                 $jwtPayload['cinema_id'] = $cinemaId;
@@ -356,17 +321,162 @@ class AuthController {
                     'email'          => $user['email'],
                     'role_id'        => $user['role_id'],
                     'role'           => $roleName,
+                    'base_role'      => $baseRole,
                     'full_name'      => $profile['full_name'] ?? '',
                     'avatar'         => $profile['avatar'] ?? null,
                     'current_points' => $user['current_points'],
                     'cinema_id'      => $cinemaId,
                     'cinema_name'    => $cinemaName,
+                    'roles'          => $userRoles,
+                    'permissions'    => $permissions,
                 ]
             ]);
             
         } catch (Exception $e) {
             return Response::error('Lỗi hệ thống: ' . $e->getMessage(), 500);
         }
+    }
+
+    /**
+     * Helper phân giải vai trò thực tế (base_role, roleName, cinema, permissions, roles)
+     * Dựa trên các vai trò động đã gán cho user
+     */
+    private function resolveUserRolesAndCinema($user) {
+        $userId = (int)$user['id'];
+        $userRoles = [];
+        $baseRole = null;
+        $roleName = null;
+        $db = Database::getInstance()->getConnection();
+
+        try {
+            // 1. Lấy tất cả vai trò đang gán từ user_roles
+            $stmtRoles = $db->prepare("
+                SELECT r.id, r.name, r.code, r.display_name, r.base_role, ur.is_primary
+                FROM user_roles ur
+                JOIN roles r ON r.id = ur.role_id
+                WHERE ur.user_id = :uid AND r.is_active = 1
+                ORDER BY ur.is_primary DESC, r.id ASC
+            ");
+            $stmtRoles->execute([':uid' => $userId]);
+            $userRoles = $stmtRoles->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log("AuthController resolveUserRoles Error: " . $e->getMessage());
+        }
+
+        // 2. Nếu trong user_roles chưa có, fallback đọc từ roles theo role_id chính của user
+        if (empty($userRoles) && !empty($user['role_id'])) {
+            try {
+                $stmtSingle = $db->prepare("SELECT id, name, code, display_name, base_role FROM roles WHERE id = :rid LIMIT 1");
+                $stmtSingle->execute([':rid' => (int)$user['role_id']]);
+                $rRow = $stmtSingle->fetch(PDO::FETCH_ASSOC);
+                if ($rRow) {
+                    $userRoles = [$rRow];
+                }
+            } catch (Exception $e) {}
+        }
+
+        // 3. Xác định base_role theo mức độ ưu tiên cao nhất: admin > manager > staff > member > guest
+        if (!empty($userRoles)) {
+            $baseRolesList = array_map(function($r) {
+                return strtolower($r['base_role'] ?? '');
+            }, $userRoles);
+
+            if (in_array('admin', $baseRolesList)) {
+                $baseRole = 'admin';
+                $roleName = 'Admin';
+            } elseif (in_array('manager', $baseRolesList)) {
+                $baseRole = 'manager';
+                $roleName = 'Manager';
+            } elseif (in_array('staff', $baseRolesList)) {
+                $baseRole = 'staff';
+                $roleName = 'Staff';
+            } elseif (in_array('member', $baseRolesList)) {
+                $baseRole = 'member';
+                $roleName = 'Member';
+            } else {
+                $baseRole = 'guest';
+                $roleName = 'Guest';
+            }
+        } else {
+            // Fallback tuyệt đối với role_id cũ
+            $roleMap = [
+                1 => ['role' => 'Guest', 'base' => 'guest'],
+                2 => ['role' => 'Member', 'base' => 'member'],
+                3 => ['role' => 'Staff', 'base' => 'staff'],
+                4 => ['role' => 'Manager', 'base' => 'manager'],
+                5 => ['role' => 'Admin', 'base' => 'admin'],
+            ];
+            $mapped = $roleMap[(int)$user['role_id']] ?? ['role' => 'Member', 'base' => 'member'];
+            $roleName = $mapped['role'];
+            $baseRole = $mapped['base'];
+        }
+
+        // 4. Lấy cinema_id cho Manager hoặc Staff
+        $cinemaId = null;
+        $cinemaName = null;
+        try {
+            if ($baseRole === 'manager') {
+                $cinemaStmt = $db->prepare("
+                    SELECT COALESCE(c2.id, c.id) as id, COALESCE(c2.name, c.name) as name
+                    FROM users u
+                    LEFT JOIN cinema_staff cs ON cs.user_id = u.id
+                    LEFT JOIN cinemas c2 ON c2.id = cs.cinema_id
+                    LEFT JOIN cinemas c ON c.manager_id = u.id
+                    WHERE u.id = :uid LIMIT 1
+                ");
+                $cinemaStmt->execute([':uid' => $userId]);
+                $cinemaRow = $cinemaStmt->fetch(PDO::FETCH_ASSOC);
+                if ($cinemaRow && $cinemaRow['id']) {
+                    $cinemaId   = (int)$cinemaRow['id'];
+                    $cinemaName = $cinemaRow['name'];
+                }
+            } elseif ($baseRole === 'staff') {
+                $cinemaStmt = $db->prepare("
+                    SELECT c.id, c.name
+                    FROM cinema_staff cs
+                    JOIN cinemas c ON c.id = cs.cinema_id
+                    WHERE cs.user_id = :uid
+                    LIMIT 1
+                ");
+                $cinemaStmt->execute([':uid' => $userId]);
+                $cinemaRow = $cinemaStmt->fetch(PDO::FETCH_ASSOC);
+                if ($cinemaRow) {
+                    $cinemaId   = (int)$cinemaRow['id'];
+                    $cinemaName = $cinemaRow['name'];
+                }
+            }
+        } catch (Exception $ignore) {}
+
+        // 5. Lấy danh sách permission codes hiệu lực (kế thừa các quyền công khai của Guest + các quyền ngầm định)
+        $permissionCodes = [];
+        try {
+            if (!empty($userRoles)) {
+                $roleIds = array_column($userRoles, 'id');
+                $placeholders = implode(',', array_fill(0, count($roleIds), '?'));
+                $permStmt = $db->prepare("
+                    SELECT DISTINCT p.name
+                    FROM role_permissions rp
+                    JOIN permissions p ON p.id = rp.permission_id
+                    WHERE (rp.role_id IN ($placeholders) OR rp.role_id = 1) AND p.is_active = 1
+                ");
+                $permStmt->execute($roleIds);
+                $permissionCodes = $permStmt->fetchAll(PDO::FETCH_COLUMN);
+
+                // Nếu có quyền bookings.pos (bán vé POS tại quầy) thì ngầm định có bookings.create
+                if (in_array('bookings.pos', $permissionCodes, true) && !in_array('bookings.create', $permissionCodes, true)) {
+                    $permissionCodes[] = 'bookings.create';
+                }
+            }
+        } catch (Exception $e) {}
+
+        return [
+            'roleName' => $roleName,
+            'baseRole' => $baseRole,
+            'cinemaId' => $cinemaId,
+            'cinemaName' => $cinemaName,
+            'userRoles' => $userRoles,
+            'permissionCodes' => $permissionCodes
+        ];
     }
     
     /**
@@ -416,54 +526,47 @@ class AuthController {
             
             $profile = $this->userProfileModel->getByUserId($user['id']);
             
-            // Lấy cinema_id cho Staff/Manager
-            $cinemaId = null;
-            $cinemaName = null;
-            $roleId = (int)$user['role_id'];
-            if ($roleId === 4) {
-                try {
-                    $cinemaStmt = $this->userModel->findById($user['id']);
-                    $db2 = Database::getInstance()->getConnection();
-                    $stmt2 = $db2->prepare("SELECT id, name FROM cinemas WHERE manager_id = :uid LIMIT 1");
-                    $stmt2->execute([':uid' => $user['id']]);
-                    $row2 = $stmt2->fetch(PDO::FETCH_ASSOC);
-                    if ($row2) {
-                        $cinemaId = (int)$row2['id'];
-                        $cinemaName = $row2['name'];
-                    }
-                } catch (Exception $ignore) {}
-            } elseif ($roleId === 3) {
-                try {
-                    $db2 = Database::getInstance()->getConnection();
-                    $stmt2 = $db2->prepare("
-                        SELECT c.id, c.name
-                        FROM cinema_staff cs
-                        JOIN cinemas c ON c.id = cs.cinema_id
-                        WHERE cs.user_id = :uid
-                        LIMIT 1
-                    ");
-                    $stmt2->execute([':uid' => $user['id']]);
-                    $row2 = $stmt2->fetch(PDO::FETCH_ASSOC);
-                    if ($row2) {
-                        $cinemaId = (int)$row2['id'];
-                        $cinemaName = $row2['name'];
-                    }
-                } catch (Exception $ignore) {}
+            // Phân giải vai trò thực tế
+            $roleInfo = $this->resolveUserRolesAndCinema($user);
+            $roleName = $roleInfo['roleName'];
+            $baseRole = $roleInfo['baseRole'];
+            $cinemaId = $roleInfo['cinemaId'];
+            $cinemaName = $roleInfo['cinemaName'];
+            $userRoles = $roleInfo['userRoles'];
+            $permissions = $roleInfo['permissionCodes'];
+
+            // Generate refreshed JWT token
+            $jwtPayload = [
+                'user_id'   => $user['id'],
+                'email'     => $user['email'],
+                'role_id'   => $user['role_id'],
+                'role'      => $roleName,
+                'base_role' => $baseRole,
+                'exp'       => time() + Config::$jwt_expiration,
+            ];
+            if ($cinemaId !== null) {
+                $jwtPayload['cinema_id'] = $cinemaId;
             }
+            $refreshedToken = JWT::encode($jwtPayload, Config::$jwt_secret);
 
             return Response::success([
+                'token' => $refreshedToken,
                 'user' => [
-                    'id' => $user['id'],
-                    'email' => $user['email'],
-                    'role_id' => $user['role_id'],
-                    'full_name' => $profile['full_name'] ?? '',
-                    'phone' => $profile['phone'] ?? '',
-                    'dob' => $profile['dob'] ?? null,
-                    'avatar' => $profile['avatar'] ?? null,
+                    'id'             => $user['id'],
+                    'email'          => $user['email'],
+                    'role_id'        => $user['role_id'],
+                    'role'           => $roleName,
+                    'base_role'      => $baseRole,
+                    'full_name'      => $profile['full_name'] ?? '',
+                    'phone'          => $profile['phone'] ?? '',
+                    'dob'            => $profile['dob'] ?? null,
+                    'avatar'         => $profile['avatar'] ?? null,
                     'current_points' => $user['current_points'],
-                    'membership_id' => $profile['membership_id'] ?? 1,
-                    'cinema_id' => $cinemaId,
-                    'cinema_name' => $cinemaName,
+                    'membership_id'  => $profile['membership_id'] ?? 1,
+                    'cinema_id'      => $cinemaId,
+                    'cinema_name'    => $cinemaName,
+                    'roles'          => $userRoles,
+                    'permissions'    => $permissions,
                 ]
             ]);
             
@@ -511,13 +614,22 @@ class AuthController {
                 return Response::error('Tài khoản đã bị khóa', 403);
             }
             
+            // Phân giải vai trò thực tế
+            $roleInfo = $this->resolveUserRolesAndCinema($user);
+            $jwtPayload = [
+                'user_id'   => $user['id'],
+                'email'     => $user['email'],
+                'role_id'   => $user['role_id'],
+                'role'      => $roleInfo['roleName'],
+                'base_role' => $roleInfo['baseRole'],
+                'exp'       => time() + Config::$jwt_expiration
+            ];
+            if ($roleInfo['cinemaId'] !== null) {
+                $jwtPayload['cinema_id'] = $roleInfo['cinemaId'];
+            }
+
             // Generate new token
-            $newToken = JWT::encode([
-                'user_id' => $user['id'],
-                'email' => $user['email'],
-                'role_id' => $user['role_id'],
-                'exp' => time() + Config::$jwt_expiration
-            ], Config::$jwt_secret);
+            $newToken = JWT::encode($jwtPayload, Config::$jwt_secret);
             
             return Response::success([
                 'token' => $newToken,

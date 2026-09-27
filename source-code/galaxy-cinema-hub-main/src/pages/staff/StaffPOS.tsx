@@ -20,6 +20,8 @@ import { getPusherClient } from "@/lib/pusher";
 import { useAuth } from "@/contexts/AppContext";
 import { CustomerService } from "@/services/customer.service";
 import { POSCustomer, POSCustomerBookingHistoryItem } from "@/types/api";
+import { CurvedCinemaScreen } from "@/components/cinema/CurvedCinemaScreen";
+import StaffAccessDenied from "@/components/staff/StaffAccessDenied";
 
 type SeatStatus =
   | "Available"
@@ -67,7 +69,7 @@ interface SeatMapResponse {
   };
 }
 
-type PaymentMethod = "CASH" | "QR";
+type PaymentMethod = "CASH" | "VNPAY" | "MOMO";
 
 interface BookingDetailResponse {
   success: boolean;
@@ -100,7 +102,37 @@ interface QrPaymentState {
   payUrl?: string;
   qrCodeUrl?: string;
   generatedQrCode?: string; // QR generated from payUrl
+  gateway: "VNPAY" | "MOMO";
 }
+
+interface ProcessedSeat {
+  id: number;
+  row_code: string;
+  displayRow: string;
+  number: number;
+  displayNumber: number;
+  seat_type: string;
+  status: SeatStatus | "Inactive";
+  calculated_price: number;
+  isAisle: boolean;
+}
+
+interface ProcessedRow {
+  rowKey: string;
+  displayRow: string;
+  isWalkwayRow: boolean;
+  seats: ProcessedSeat[];
+}
+
+const getRowLetter = (index: number): string => {
+  let letter = "";
+  let temp = index;
+  while (temp >= 0) {
+    letter = String.fromCharCode((temp % 26) + 65) + letter;
+    temp = Math.floor(temp / 26) - 1;
+  }
+  return letter;
+};
 
 interface ConcessionItem {
   id: number;
@@ -143,6 +175,17 @@ const getConcessionLabel = (name?: string, id?: number): string => {
 const StaffPOS: React.FC = () => {
   const { toast } = useToast();
   const { user } = useAuth();
+
+  // Kiểm tra quyền hạn Bán Vé POS
+  const hasPosPermission = useMemo(() => {
+    if (!user) return true;
+    if (user.role === "admin" || user.base_role === "admin") return true;
+
+    if (user.permissions && Array.isArray(user.permissions)) {
+      return user.permissions.includes("bookings.pos");
+    }
+    return false;
+  }, [user]);
 
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date();
@@ -192,10 +235,89 @@ const StaffPOS: React.FC = () => {
 
   const paymentHandledRef = useRef(false);
 
+  // Sơ đồ ghế đã chuẩn hóa (bảo toàn ma trận hàng cột, dời chữ cái/số ghế, ẩn lối đi)
+  const { processedRows, topColLabels } = useMemo(() => {
+    if (!seatMap || Object.keys(seatMap).length === 0) {
+      return {
+        processedRows: [] as ProcessedRow[],
+        topColLabels: [] as (number | null)[],
+      };
+    }
+
+    const rawRowKeys = Object.keys(seatMap);
+    const rawRows = rawRowKeys.map((k) => seatMap[k]);
+
+    // 1. Nhãn hàng: hàng có ghế thực tế -> A, B, C...; hàng 100% lối đi -> ""
+    let seatRowCounter = 0;
+    const rowLabels = rawRows.map((row) => {
+      const hasAnySeat = row.some((s) => (s.status as string) !== "Inactive");
+      if (!hasAnySeat) return "";
+      const label = getRowLetter(seatRowCounter);
+      seatRowCounter++;
+      return label;
+    });
+
+    // 2. Nhãn cột: cột có ghế thực tế -> 1, 2, 3...; cột 100% lối đi -> null
+    const maxCols = Math.max(...rawRows.map((r) => r.length), 0);
+    let seatColCounter = 1;
+    const colLabels: (number | null)[] = [];
+    for (let c = 0; c < maxCols; c++) {
+      const hasAnySeatInCol = rawRows.some(
+        (row) => row[c] && (row[c].status as string) !== "Inactive",
+      );
+      if (!hasAnySeatInCol) {
+        colLabels.push(null);
+      } else {
+        colLabels.push(seatColCounter);
+        seatColCounter++;
+      }
+    }
+
+    const rows: ProcessedRow[] = rawRows.map((rowSeats, rIdx) => {
+      const displayRow = rowLabels[rIdx];
+      const isWalkwayRow = !displayRow;
+
+      const seats: ProcessedSeat[] = rowSeats.map((seat, cIdx) => {
+        const isAisle =
+          (seat.status as string) === "Inactive" || seat.number >= 1000;
+        const displayNumber =
+          colLabels[cIdx] !== null && colLabels[cIdx] !== undefined
+            ? colLabels[cIdx]!
+            : seat.number < 1000
+              ? seat.number
+              : cIdx + 1;
+
+        return {
+          id: seat.id,
+          row_code: seat.row_code,
+          displayRow: displayRow || seat.row_code,
+          number: seat.number,
+          displayNumber,
+          seat_type: seat.seat_type,
+          status: seat.status,
+          calculated_price: Number(seat.calculated_price) || 0,
+          isAisle,
+        };
+      });
+
+      return {
+        rowKey: rawRowKeys[rIdx],
+        displayRow,
+        isWalkwayRow,
+        seats,
+      };
+    });
+
+    return { processedRows: rows, topColLabels: colLabels };
+  }, [seatMap]);
+
+  const allProcessedSeats = useMemo(() => {
+    return processedRows.flatMap((r) => r.seats.filter((s) => !s.isAisle));
+  }, [processedRows]);
+
   const selectedSeats = useMemo(() => {
-    const allSeats = Object.values(seatMap).flat();
-    return allSeats.filter((seat) => selectedSeatIds.includes(seat.id));
-  }, [seatMap, selectedSeatIds]);
+    return allProcessedSeats.filter((seat) => selectedSeatIds.includes(seat.id));
+  }, [allProcessedSeats, selectedSeatIds]);
 
   const totalAmount = useMemo(() => {
     const seatTotal = selectedSeats.reduce(
@@ -250,6 +372,11 @@ const StaffPOS: React.FC = () => {
 
   useEffect(() => {
     const fetchShowtimes = async () => {
+      if (!hasPosPermission) {
+        setLoadingShowtimes(false);
+        return;
+      }
+
       setLoadingShowtimes(true);
       setSelectedShowtime(null);
       setSeatMap({});
@@ -271,12 +398,13 @@ const StaffPOS: React.FC = () => {
         }>(`${API_ENDPOINTS.SHOWTIMES}?${params.toString()}`);
 
         setShowtimes(response.data?.showtimes || []);
-      } catch (error) {
+      } catch (error: unknown) {
         console.error("Error loading showtimes:", error);
         setShowtimes([]);
+        const errMsg = error instanceof Error ? error.message : "Không thể lấy danh sách suất chiếu từ hệ thống.";
         toast({
           title: "Lỗi tải suất chiếu",
-          description: "Không thể lấy danh sách suất chiếu từ hệ thống.",
+          description: errMsg,
           variant: "destructive",
         });
       } finally {
@@ -285,7 +413,7 @@ const StaffPOS: React.FC = () => {
     };
 
     void fetchShowtimes();
-  }, [selectedDate, toast, user?.cinema_id]);
+  }, [selectedDate, toast, user?.cinema_id, hasPosPermission, user?.permissions, user?.role_id]);
 
   const loadConcessions = async () => {
     setLoadingConcessions(true);
@@ -461,8 +589,62 @@ const StaffPOS: React.FC = () => {
     }
   }
 
-  const toggleSeat = (seat: ApiSeat) => {
+  const toggleSeat = (seat: ProcessedSeat) => {
     if (seat.status !== "Available") return;
+
+    const isCouple =
+      String(seat.seat_type).toLowerCase().includes("sweet") ||
+      String(seat.seat_type).toLowerCase().includes("couple") ||
+      String(seat.seat_type).toLowerCase().includes("đôi");
+
+    if (isCouple) {
+      const row = processedRows.find(
+        (r) => r.rowKey === seat.row_code || r.displayRow === seat.displayRow,
+      );
+      if (row) {
+        const seatIdx = row.seats.findIndex((s) => s.id === seat.id);
+        const prevSeat = row.seats[seatIdx - 1];
+        const nextSeat = row.seats[seatIdx + 1];
+
+        let pairSeat: ProcessedSeat | null = null;
+        if (
+          nextSeat &&
+          !nextSeat.isAisle &&
+          (String(nextSeat.seat_type).toLowerCase().includes("couple") ||
+            String(nextSeat.seat_type).toLowerCase().includes("sweet") ||
+            String(nextSeat.seat_type).toLowerCase().includes("đôi"))
+        ) {
+          pairSeat = nextSeat;
+        } else if (
+          prevSeat &&
+          !prevSeat.isAisle &&
+          (String(prevSeat.seat_type).toLowerCase().includes("couple") ||
+            String(prevSeat.seat_type).toLowerCase().includes("sweet") ||
+            String(prevSeat.seat_type).toLowerCase().includes("đôi"))
+        ) {
+          pairSeat = prevSeat;
+        }
+
+        if (pairSeat && pairSeat.status === "Available") {
+          const bothSelected =
+            selectedSeatIds.includes(seat.id) &&
+            selectedSeatIds.includes(pairSeat.id);
+          if (bothSelected) {
+            setSelectedSeatIds((prev) =>
+              prev.filter((id) => id !== seat.id && id !== pairSeat!.id),
+            );
+            return;
+          } else {
+            setSelectedSeatIds((prev) => [
+              ...prev.filter((id) => id !== seat.id && id !== pairSeat!.id),
+              seat.id,
+              pairSeat!.id,
+            ]);
+            return;
+          }
+        }
+      }
+    }
 
     setSelectedSeatIds((prev) =>
       prev.includes(seat.id)
@@ -606,7 +788,16 @@ const StaffPOS: React.FC = () => {
     );
   };
 
-  function printReceipt(booking: BookingDetailResponse["data"]) {
+  function printReceipt(
+    booking: BookingDetailResponse["data"],
+    method: PaymentMethod = "CASH",
+  ) {
+    const methodLabel =
+      method === "VNPAY"
+        ? "VNPay QR"
+        : method === "MOMO"
+          ? "MoMo QR"
+          : "Tiền mặt";
     const ticketCodes =
       booking.tickets?.map((t) => t.ticket_code).filter(Boolean) || [];
 
@@ -699,7 +890,7 @@ const StaffPOS: React.FC = () => {
           }
 
           <div style="font-size:16px; font-weight:bold; margin:10px 0 16px; text-align:right;">
-            Tổng thanh toán: ${formatVND(Number(booking.final_price || booking.total_price || 0))} (Tiền mặt)
+            Tổng thanh toán: ${formatVND(Number(booking.final_price || booking.total_price || 0))} (${methodLabel})
           </div>
 
           <div style="border-top:1px dashed #999; padding-top:10px;">
@@ -821,23 +1012,21 @@ const StaffPOS: React.FC = () => {
         throw new Error("Không lấy được booking_id sau khi tạo đơn");
       }
 
-      if (paymentMethod === "QR") {
-        const qrResponse = await apiCall<{
+      if (paymentMethod === "VNPAY") {
+        const vnpayResponse = await apiCall<{
           success: boolean;
           data: { pay_url?: string; qr_code_url?: string };
-        }>(API_ENDPOINTS.MOMO_PAYMENT, {
+        }>(API_ENDPOINTS.VNPAY_PAYMENT, {
           method: "POST",
           body: JSON.stringify({ booking_id: bookingId, is_pos: true }),
         });
 
-        // Generate QR code from payUrl if qrCodeUrl not provided
-        const qrCodeUrl = qrResponse.data?.qr_code_url;
-        const payUrl = qrResponse.data?.pay_url;
+        const payUrl = vnpayResponse.data?.pay_url;
+        const qrCodeUrl = vnpayResponse.data?.qr_code_url;
         const generatedQrCode = payUrl
           ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(payUrl)}`
           : undefined;
 
-        // Reset payment handler for new QR session
         paymentHandledRef.current = false;
 
         setQrPayment({
@@ -846,12 +1035,44 @@ const StaffPOS: React.FC = () => {
           payUrl,
           qrCodeUrl,
           generatedQrCode,
+          gateway: "VNPAY",
         });
 
         toast({
-          title: "Đã tạo thanh toán QR",
+          title: "Đã tạo thanh toán VNPay",
           description:
-            "Vui lòng cho khách quét mã QR. Hệ thống sẽ tự động xác nhận khi thanh toán thành công.",
+            "Vui lòng cho khách quét mã QR VNPay hoặc nhấn Mở trang thanh toán để hoàn tất giao dịch.",
+        });
+      } else if (paymentMethod === "MOMO") {
+        const qrResponse = await apiCall<{
+          success: boolean;
+          data: { pay_url?: string; qr_code_url?: string };
+        }>(API_ENDPOINTS.MOMO_PAYMENT, {
+          method: "POST",
+          body: JSON.stringify({ booking_id: bookingId, is_pos: true }),
+        });
+
+        const qrCodeUrl = qrResponse.data?.qr_code_url;
+        const payUrl = qrResponse.data?.pay_url;
+        const generatedQrCode = payUrl
+          ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(payUrl)}`
+          : undefined;
+
+        paymentHandledRef.current = false;
+
+        setQrPayment({
+          bookingId,
+          bookingCode: createResponse.data?.booking_code || `#${bookingId}`,
+          payUrl,
+          qrCodeUrl,
+          generatedQrCode,
+          gateway: "MOMO",
+        });
+
+        toast({
+          title: "Đã tạo thanh toán MoMo",
+          description:
+            "Vui lòng cho khách quét mã QR MoMo. Hệ thống sẽ tự động xác nhận khi thanh toán thành công.",
         });
       } else {
         await apiCall(API_ENDPOINTS.CONFIRM_BOOKING(bookingId), {
@@ -863,7 +1084,7 @@ const StaffPOS: React.FC = () => {
         );
 
         if (bookingDetail?.data) {
-          printReceipt(bookingDetail.data);
+          printReceipt(bookingDetail.data, "CASH");
         }
 
         toast({
@@ -876,7 +1097,9 @@ const StaffPOS: React.FC = () => {
         setCashConfirmed(false);
         setQrPayment(null);
         setSelectedConcessions([]);
-        await loadSeatMap(selectedShowtime);
+        if (selectedShowtime) {
+          await loadSeatMap(selectedShowtime);
+        }
         await loadConcessions();
       }
     } catch (error) {
@@ -892,36 +1115,38 @@ const StaffPOS: React.FC = () => {
     }
   };
 
-  const getSeatClass = (seat: ApiSeat) => {
+  const getSeatClass = (seat: ProcessedSeat) => {
     const isSelected = selectedSeatIds.includes(seat.id);
+    const isCouple =
+      String(seat.seat_type).toLowerCase().includes("sweet") ||
+      String(seat.seat_type).toLowerCase().includes("couple") ||
+      String(seat.seat_type).toLowerCase().includes("đôi");
+    const isVip = String(seat.seat_type).toLowerCase().includes("vip");
+
     const baseClass =
-      "w-8 h-8 rounded text-[10px] font-medium transition-all cursor-pointer hover:scale-110";
+      "w-8 h-8 rounded-lg text-[11px] font-bold font-mono transition-all flex items-center justify-center shadow-xs select-none";
 
     if (seat.status === "Maintenance") {
-      return `${baseClass} bg-gray-700 text-gray-300 cursor-not-allowed`;
+      return `${baseClass} bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700 cursor-not-allowed opacity-80`;
     }
     if (seat.status === "SOLD" || seat.status === "USED") {
-      return `${baseClass} bg-gray-300 text-gray-500 cursor-not-allowed`;
+      return `${baseClass} bg-slate-200 text-slate-500 border border-slate-300 dark:bg-zinc-800 dark:text-zinc-500 dark:border-zinc-700 cursor-not-allowed line-through`;
     }
     if (seat.status === "HOLDING") {
-      return `${baseClass} bg-yellow-400 text-yellow-900 cursor-not-allowed`;
+      return `${baseClass} bg-yellow-400 text-yellow-950 border border-yellow-500 font-bold cursor-not-allowed animate-pulse`;
     }
     if (isSelected) {
-      return `${baseClass} bg-primary text-primary-foreground shadow-lg`;
+      return `${baseClass} bg-primary text-primary-foreground border-2 border-primary ring-2 ring-primary/30 shadow-md scale-105 z-10`;
     }
-    if (String(seat.seat_type).toLowerCase().includes("vip")) {
-      return `${baseClass} bg-blue-100 text-blue-700 hover:bg-blue-200`;
+    if (isCouple) {
+      return `${baseClass} bg-pink-100 text-pink-700 border border-pink-300 hover:bg-pink-200 hover:border-pink-400 dark:bg-pink-950/50 dark:text-pink-300 dark:border-pink-700 cursor-pointer hover:scale-105`;
     }
-    if (
-      String(seat.seat_type).toLowerCase().includes("sweet") ||
-      String(seat.seat_type).toLowerCase().includes("couple")
-    ) {
-      return `${baseClass} bg-pink-100 text-pink-700 hover:bg-pink-200`;
+    if (isVip) {
+      return `${baseClass} bg-purple-100 text-purple-700 border border-purple-300 hover:bg-purple-200 hover:border-purple-400 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-700 cursor-pointer hover:scale-105`;
     }
-    return `${baseClass} bg-white border-2 border-gray-300 text-gray-700 hover:border-primary`;
+    return `${baseClass} bg-white text-slate-800 border-2 border-slate-300 hover:border-primary hover:text-primary dark:bg-zinc-900 dark:text-zinc-200 dark:border-zinc-700 cursor-pointer hover:scale-105`;
   };
 
-  const sortedRows = Object.keys(seatMap).sort();
   const submitDisabledReason = submitting
     ? "Đang xử lý giao dịch..."
     : !selectedShowtime
@@ -934,6 +1159,17 @@ const StaffPOS: React.FC = () => {
             ? "Vui lòng xác nhận đã nhận đủ tiền mặt."
             : null;
   const isSubmitDisabled = submitDisabledReason !== null;
+
+  if (!hasPosPermission) {
+    return (
+      <StaffAccessDenied
+        title="Bạn không có quyền Bán Vé tại quầy (POS)"
+        requiredPermission="bookings.pos"
+        returnPath="/staff/scanner"
+        returnLabel="Chuyển sang Quét Vé"
+      />
+    );
+  }
 
   return (
     <div className="grid lg:grid-cols-5 gap-6">
@@ -1114,66 +1350,129 @@ const StaffPOS: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="flex justify-center mb-4">
-                  <div className="bg-gradient-to-r from-gray-300 to-gray-400 rounded-lg px-8 py-2 text-sm font-medium text-gray-700">
-                    MÀN HÌNH
-                  </div>
-                </div>
+                {/* Cinema Screen with realistic curved arc and glow */}
+                <CurvedCinemaScreen
+                  compact
+                  className="w-full max-w-xl mx-auto my-2"
+                />
 
-                <div className="space-y-2 overflow-x-auto">
-                  {sortedRows.map((row) => (
-                    <div
-                      key={row}
-                      className="flex items-center gap-2 min-w-max"
-                    >
-                      <span className="w-6 text-center text-sm font-medium">
-                        {row}
-                      </span>
-                      <div className="flex gap-1">
-                        {seatMap[row]
-                          .slice()
-                          .sort((a, b) => a.number - b.number)
-                          .map((seat) => (
-                            <button
-                              key={seat.id}
-                              type="button"
-                              onClick={() => toggleSeat(seat)}
-                              className={getSeatClass(seat)}
-                              disabled={seat.status !== "Available"}
-                              title={`${row}${seat.number} - ${seat.seat_type} - ${formatVND(Number(seat.calculated_price))}`}
-                            >
-                              {seat.number}
-                            </button>
-                          ))}
+                {/* Seat Matrix: Centered container */}
+                <div className="w-full flex flex-col items-center justify-center overflow-x-auto py-3">
+                  <div className="inline-flex flex-col items-center">
+                    {/* Top Column Numbers Header */}
+                    {topColLabels.length > 0 && (
+                      <div className="flex items-center gap-1.5 mb-2 select-none">
+                        <span className="w-6 text-center text-[10px] font-bold text-muted-foreground" />
+                        <div className="flex gap-1.5">
+                          {topColLabels.map((col, idx) =>
+                            col !== null ? (
+                              <span
+                                key={`top-col-${idx}`}
+                                className="w-8 text-center text-[11px] font-bold text-muted-foreground"
+                              >
+                                {col}
+                              </span>
+                            ) : (
+                              <span
+                                key={`top-col-gap-${idx}`}
+                                className="w-8"
+                              />
+                            ),
+                          )}
+                        </div>
+                        <span className="w-6 text-center text-[10px] font-bold text-muted-foreground" />
                       </div>
+                    )}
+
+                    {/* Seat Rows */}
+                    <div className="space-y-1.5">
+                      {processedRows.map((row) => {
+                        if (row.isWalkwayRow) {
+                          return (
+                            <div
+                              key={row.rowKey}
+                              className="h-4 flex items-center justify-center select-none"
+                            >
+                              <span className="text-[10px] text-muted-foreground/60 tracking-widest font-semibold uppercase">
+                                — Lối đi —
+                              </span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div
+                            key={row.rowKey}
+                            className="flex items-center gap-1.5"
+                          >
+                            <span className="w-6 text-center text-xs font-bold text-muted-foreground select-none">
+                              {row.displayRow}
+                            </span>
+                            <div className="flex gap-1.5">
+                              {row.seats.map((seat, cIdx) => {
+                                if (seat.isAisle) {
+                                  return (
+                                    <span
+                                      key={`aisle-${seat.id || cIdx}`}
+                                      className="w-8 h-8 pointer-events-none select-none opacity-0"
+                                    />
+                                  );
+                                }
+
+                                return (
+                                  <button
+                                    key={seat.id}
+                                    type="button"
+                                    onClick={() => toggleSeat(seat)}
+                                    className={getSeatClass(seat)}
+                                    disabled={seat.status !== "Available"}
+                                    title={`${seat.displayRow}${seat.displayNumber} - ${seat.seat_type} - ${formatVND(seat.calculated_price)}`}
+                                  >
+                                    {seat.displayNumber}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <span className="w-6 text-center text-xs font-bold text-muted-foreground select-none">
+                              {row.displayRow}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap gap-4 text-xs mt-4 pt-4 border-t">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-white border-2 border-gray-300 rounded" />
-                    <span>Thường trống</span>
+                <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-xs mt-4 pt-4 border-t">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3.5 h-3.5 bg-white border-2 border-slate-300 rounded" />
+                    <span>Thường</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-blue-100 rounded" />
-                    <span>VIP trống</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3.5 h-3.5 bg-purple-100 border border-purple-300 rounded" />
+                    <span>VIP</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-pink-100 rounded" />
-                    <span>Couple/Sweetbox trống</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3.5 h-3.5 bg-pink-100 border border-pink-300 rounded" />
+                    <span>Ghế Đôi</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-primary rounded" />
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3.5 h-3.5 bg-primary rounded" />
                     <span>Đang chọn</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-yellow-400 rounded" />
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3.5 h-3.5 bg-yellow-400 rounded" />
                     <span>Đang giữ</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-gray-300 rounded" />
-                    <span>Đã bán/đã dùng</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3.5 h-3.5 bg-slate-200 text-slate-500 rounded text-[9px] flex items-center justify-center line-through">
+                      X
+                    </div>
+                    <span>Đã bán</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3.5 h-3.5 bg-amber-100 border border-amber-300 rounded" />
+                    <span>Bảo trì</span>
                   </div>
                 </div>
               </div>
@@ -1366,52 +1665,106 @@ const StaffPOS: React.FC = () => {
               <label className="text-sm font-medium">
                 Phương thức thanh toán
               </label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod("CASH")}
+                  onClick={() => {
+                    setPaymentMethod("CASH");
+                    setQrPayment(null);
+                  }}
                   className={cn(
-                    "rounded-md border px-3 py-2 text-sm",
+                    "rounded-lg border px-2.5 py-2 text-xs font-semibold flex flex-col items-center justify-center gap-1 transition-all",
                     paymentMethod === "CASH"
-                      ? "border-primary bg-primary/10 text-primary font-semibold"
-                      : "border-gray-200",
+                      ? "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary/20"
+                      : "border-border hover:bg-muted/50 text-muted-foreground",
                   )}
                 >
-                  Tiền mặt
+                  <CreditCard className="w-4 h-4" />
+                  <span>Tiền mặt</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod("QR")}
+                  onClick={() => {
+                    setPaymentMethod("VNPAY");
+                    setQrPayment(null);
+                  }}
                   className={cn(
-                    "rounded-md border px-3 py-2 text-sm",
-                    paymentMethod === "QR"
-                      ? "border-primary bg-primary/10 text-primary font-semibold"
-                      : "border-gray-200",
+                    "rounded-lg border px-2.5 py-2 text-xs font-semibold flex flex-col items-center justify-center gap-1 transition-all",
+                    paymentMethod === "VNPAY"
+                      ? "border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-500 shadow-xs ring-1 ring-blue-500/20"
+                      : "border-border hover:bg-muted/50 text-muted-foreground",
                   )}
                 >
-                  QR (MoMo)
+                  <span className="font-extrabold text-[13px] tracking-tight text-blue-600 dark:text-blue-400">
+                    VNPAY
+                  </span>
+                  <span>QR / Thẻ ATM</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethod("MOMO");
+                    setQrPayment(null);
+                  }}
+                  className={cn(
+                    "rounded-lg border px-2.5 py-2 text-xs font-semibold flex flex-col items-center justify-center gap-1 transition-all",
+                    paymentMethod === "MOMO"
+                      ? "border-pink-600 bg-pink-50 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300 dark:border-pink-500 shadow-xs ring-1 ring-pink-500/20"
+                      : "border-border hover:bg-muted/50 text-muted-foreground",
+                  )}
+                >
+                  <span className="font-extrabold text-[13px] tracking-tight text-pink-600 dark:text-pink-400">
+                    MoMo
+                  </span>
+                  <span>Ví MoMo</span>
                 </button>
               </div>
 
               {paymentMethod === "CASH" && (
-                <label className="flex items-center gap-2 text-sm mt-2">
+                <label className="flex items-center gap-2 text-xs mt-2 text-muted-foreground cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={cashConfirmed}
                     onChange={(e) => setCashConfirmed(e.target.checked)}
+                    className="rounded border-slate-300 text-primary focus:ring-primary w-4 h-4 cursor-pointer"
                   />
-                  Tôi xác nhận đã nhận đủ tiền mặt từ khách.
+                  <span>Tôi xác nhận đã nhận đủ tiền mặt từ khách hàng.</span>
                 </label>
               )}
             </div>
 
             {qrPayment && (
-              <div className="rounded-md border-2 border-orange-300 bg-orange-50 p-4 space-y-3">
+              <div
+                className={cn(
+                  "rounded-xl border-2 p-4 space-y-3",
+                  qrPayment.gateway === "VNPAY"
+                    ? "border-blue-300 bg-blue-50/80 dark:bg-blue-950/30 dark:border-blue-800"
+                    : "border-pink-300 bg-pink-50/80 dark:bg-pink-950/30 dark:border-pink-800",
+                )}
+              >
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-bold text-orange-900">
-                    📲 Thanh toán QR cho đơn {qrPayment.bookingCode}
+                  <p
+                    className={cn(
+                      "text-sm font-bold",
+                      qrPayment.gateway === "VNPAY"
+                        ? "text-blue-900 dark:text-blue-200"
+                        : "text-pink-900 dark:text-pink-200",
+                    )}
+                  >
+                    {qrPayment.gateway === "VNPAY"
+                      ? "💳 Thanh toán VNPay QR"
+                      : "📱 Thanh toán MoMo QR"}{" "}
+                    cho đơn {qrPayment.bookingCode}
                   </p>
-                  <Badge className="bg-orange-500">Chờ thanh toán...</Badge>
+                  <Badge
+                    className={
+                      qrPayment.gateway === "VNPAY"
+                        ? "bg-blue-600"
+                        : "bg-pink-600"
+                    }
+                  >
+                    Chờ thanh toán...
+                  </Badge>
                 </div>
 
                 {/* Display QR Code */}
@@ -1420,41 +1773,54 @@ const StaffPOS: React.FC = () => {
                     <div className="text-center">
                       <img
                         src={qrPayment.generatedQrCode}
-                        alt="QR thanh toán MoMo"
-                        className="w-56 h-56 rounded-lg border-4 border-white shadow-lg bg-white p-2"
+                        alt={`QR thanh toán ${qrPayment.gateway}`}
+                        className="w-52 h-52 rounded-xl border-4 border-white shadow-lg bg-white p-2 mx-auto"
                       />
-                      <p className="text-xs text-gray-600 mt-2">
-                        Quét mã QR để thanh toán
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Quét mã QR để thanh toán qua{" "}
+                        {qrPayment.gateway === "VNPAY" ? "VNPay" : "MoMo"}
                       </p>
                     </div>
                   ) : qrPayment.qrCodeUrl ? (
                     <img
                       src={qrPayment.qrCodeUrl}
-                      alt="QR thanh toán"
-                      className="w-56 h-56 rounded-lg border-4 border-white shadow-lg bg-white p-2"
+                      alt={`QR thanh toán ${qrPayment.gateway}`}
+                      className="w-52 h-52 rounded-xl border-4 border-white shadow-lg bg-white p-2 mx-auto"
                     />
-                  ) : (
-                    <div className="text-center py-6">
-                      <p className="text-xs text-orange-700 mb-2">
-                        Không nhận được ảnh QR, dùng link thanh toán bên dưới
-                      </p>
-                      {qrPayment.payUrl && (
-                        <a
-                          href={qrPayment.payUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-block bg-orange-500 text-white px-4 py-2 rounded text-sm font-medium hover:bg-orange-600"
-                        >
-                          Mở link thanh toán
-                        </a>
-                      )}
-                    </div>
-                  )}
+                  ) : null}
                 </div>
 
-                <p className="text-xs text-gray-600 text-center">
-                  Hệ thống sẽ tự động xác nhận thanh toán sau khi khách quét
-                  xong.
+                {qrPayment.payUrl && (
+                  <div className="flex justify-center pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (qrPayment.payUrl) {
+                          const popup = window.open(
+                            qrPayment.payUrl,
+                            "pos_payment_gateway",
+                            "width=920,height=760,menubar=no,toolbar=no,location=no,status=no,resizable=yes",
+                          );
+                          if (!popup) {
+                            window.open(qrPayment.payUrl, "_blank");
+                          }
+                        }
+                      }}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white shadow-sm transition-all cursor-pointer",
+                        qrPayment.gateway === "VNPAY"
+                          ? "bg-blue-600 hover:bg-blue-700"
+                          : "bg-pink-600 hover:bg-pink-700",
+                      )}
+                    >
+                      Mở cổng thanh toán{" "}
+                      {qrPayment.gateway === "VNPAY" ? "VNPay" : "MoMo"} ↗
+                    </button>
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground text-center">
+                  Hệ thống sẽ tự động xác nhận thanh toán và in bill sau khi hoàn tất.
                 </p>
               </div>
             )}
@@ -1567,7 +1933,7 @@ const StaffPOS: React.FC = () => {
                 <span>Danh sách ghế</span>
                 <span>
                   {selectedSeats
-                    .map((s) => `${s.row_code}${s.number}`)
+                    .map((s) => `${s.displayRow}${s.displayNumber}`)
                     .join(", ") || "-"}
                 </span>
               </div>
@@ -1596,7 +1962,9 @@ const StaffPOS: React.FC = () => {
                 ? "Đang xử lý..."
                 : paymentMethod === "CASH"
                   ? "Xác nhận tiền mặt + In bill"
-                  : "Tạo thanh toán QR"}
+                  : paymentMethod === "VNPAY"
+                    ? "Tạo thanh toán VNPay QR"
+                    : "Tạo thanh toán MoMo QR"}
             </Button>
             {isSubmitDisabled && (
               <p className="text-xs text-amber-700">{submitDisabledReason}</p>
@@ -1604,7 +1972,9 @@ const StaffPOS: React.FC = () => {
             <p className="text-xs text-muted-foreground">
               {paymentMethod === "CASH"
                 ? "Luồng tiền mặt: nhân viên xác nhận đã nhận đủ tiền, hệ thống xác nhận booking và in bill có mã QR vé."
-                : "Luồng QR: hệ thống tạo mã QR thanh toán, booking được xác nhận sau callback thành công từ cổng thanh toán."}
+                : paymentMethod === "VNPAY"
+                  ? "Luồng VNPay: tạo mã QR VNPay để khách quét hoặc mở trang thanh toán; tự động hoàn tất và in bill sau khi thành công."
+                  : "Luồng MoMo: tạo mã QR MoMo; tự động hoàn tất và in bill sau khi thành công."}
             </p>
           </CardContent>
         </Card>

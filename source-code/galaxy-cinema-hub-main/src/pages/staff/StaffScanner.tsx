@@ -3,6 +3,8 @@ import { Camera, CameraOff, AlertTriangle, QrCode, CheckCircle } from "lucide-re
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import TicketChecker from "@/components/staff/TicketChecker";
+import { useAuth } from "@/contexts/AppContext";
+import StaffAccessDenied from "@/components/staff/StaffAccessDenied";
 import jsQR from "jsqr";
 
 type BarcodeDetectorInstance = {
@@ -14,6 +16,21 @@ type WindowWithBarcodeDetector = Window & {
 };
 
 const StaffScanner: React.FC = () => {
+  const { user } = useAuth();
+
+  const hasScannerPermission = useMemo(() => {
+    if (!user) return true;
+    if (user.role === "admin" || user.base_role === "admin") return true;
+
+    if (user.permissions && Array.isArray(user.permissions)) {
+      return (
+        user.permissions.includes("tickets.scan") ||
+        user.permissions.includes("tickets.approve_entry")
+      );
+    }
+    return false;
+  }, [user]);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -208,12 +225,24 @@ const StaffScanner: React.FC = () => {
   }, [onQrDetected]);
 
   useEffect(() => {
+    if (!hasScannerPermission) return;
     void startCamera();
 
     return () => {
       stopCamera();
     };
-  }, [startCamera, stopCamera]);
+  }, [startCamera, stopCamera, hasScannerPermission]);
+
+  if (!hasScannerPermission) {
+    return (
+      <StaffAccessDenied
+        title="Bạn không có quyền Quét Vé"
+        requiredPermission="tickets.scan"
+        returnPath="/staff/pos"
+        returnLabel="Chuyển sang Bán Vé"
+      />
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 px-2 sm:px-0">

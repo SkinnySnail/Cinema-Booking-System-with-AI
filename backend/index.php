@@ -134,8 +134,20 @@ $router->put('/api/users/:id/profile', 'UserController@updateProfile'); // Self 
 $router->post('/api/users/:id/change-password', 'UserController@changePassword'); // Self only
 $router->post('/api/users/:id/upload-avatar', 'UserController@uploadAvatar'); // Self only
 
-// Role routes
+// Role routes (Dynamic RBAC)
 $router->get('/api/roles', 'RoleController@index'); // Get all roles
+$router->get('/api/roles/:id', 'RoleController@show'); // Get role details
+$router->post('/api/roles', 'RoleController@create'); // Create custom role
+$router->put('/api/roles/:id', 'RoleController@update'); // Update custom role
+$router->delete('/api/roles/:id', 'RoleController@delete'); // Delete custom role
+
+// User Roles Assignment (Multi-Role)
+$router->get('/api/users-with-roles', 'RoleController@getUsersWithRoles'); // List users with roles
+$router->get('/api/users/:id/roles', 'RoleController@getUserRolesDetail'); // User roles detail
+$router->post('/api/users/:id/roles', 'RoleController@assignUserRoles'); // Assign roles to user
+
+// Audit Logs
+$router->get('/api/audit-logs/permissions', 'RoleController@getAuditLogs'); // Get permission audit logs
 
 // Permission routes (Admin only)
 $router->get('/api/permissions', 'PermissionController@index'); // List all permissions
@@ -381,6 +393,7 @@ $router->get('/api/manager/transactions', 'ManagerController@getTransactions');
 $router->get('/api/manager/transactions/export-details', 'ManagerController@getTransactionsExportDetails');
 // Concessions inventory (Manager)
 $router->get('/api/manager/concessions', 'ManagerController@getConcessions');
+$router->post('/api/manager/concessions/import', 'ManagerController@importConcessions');
 $router->post('/api/manager/concessions/:id/inventory', 'ManagerController@updateConcessionInventory');
 
 // Run router

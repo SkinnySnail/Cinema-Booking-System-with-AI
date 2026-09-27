@@ -75,6 +75,13 @@ interface User {
   cinema_id?: number | null;
 }
 
+interface RoleOption {
+  id: number;
+  name: string;
+  display_name?: string;
+  base_role?: string;
+}
+
 interface Pagination {
   page: number;
   limit: number;
@@ -126,7 +133,7 @@ const AdminUsers: React.FC = () => {
     active: 0,
     banned: 0,
   });
-  const [roles, setRoles] = useState<Array<{ id: number; name: string }>>([]);
+  const [roles, setRoles] = useState<RoleOption[]>([]);
   const [cinemas, setCinemas] = useState<
     Array<{
       id: number;
@@ -223,8 +230,8 @@ const AdminUsers: React.FC = () => {
       if (data.success) {
         setRoles(
           (data.data.roles || []).filter(
-            (r: { id: number; name: string }) =>
-              r.name.toLowerCase() !== "guest",
+            (r: RoleOption) =>
+              (r.base_role || r.name || "").toLowerCase() !== "guest",
           ),
         );
       }
@@ -429,11 +436,10 @@ const AdminUsers: React.FC = () => {
     const trimmedFullName = formData.full_name.trim();
     const normalizedPhone = normalizePhone(formData.phone);
 
-    const selectedRoleName = roles
-      .find((r) => r.id === formData.role_id)
-      ?.name?.toLowerCase();
+    const selectedRole = roles.find((r) => r.id === formData.role_id);
+    const selectedBaseRole = (selectedRole?.base_role || selectedRole?.name || "").toLowerCase();
     const isStaffOrManager =
-      selectedRoleName === "staff" || selectedRoleName === "manager";
+      selectedBaseRole === "staff" || selectedBaseRole === "manager";
 
     if (
       !formData.email ||
@@ -901,7 +907,7 @@ const AdminUsers: React.FC = () => {
                         {getRoleBadge(user.role_name)}
                         {user.cinema_id && (
                           <span className="text-xs text-muted-foreground">
-                            Rạp #{user.cinema_id}
+                            {cinemas.find((c) => c.id === user.cinema_id)?.name || `Rạp #${user.cinema_id}`}
                           </span>
                         )}
                       </div>
@@ -1101,7 +1107,11 @@ const AdminUsers: React.FC = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {roles
-                    .filter((role) => role.name.toLowerCase() !== "guest")
+                    .filter(
+                      (role) =>
+                        (role.base_role || role.name || "").toLowerCase() !==
+                        "guest",
+                    )
                     .map((role) => (
                       <SelectItem key={role.id} value={role.id.toString()}>
                         {role.name}
@@ -1111,12 +1121,11 @@ const AdminUsers: React.FC = () => {
               </Select>
             </div>
 
-            {(roles
-              .find((r) => r.id === formData.role_id)
-              ?.name?.toLowerCase() === "staff" ||
-              roles
-                .find((r) => r.id === formData.role_id)
-                ?.name?.toLowerCase() === "manager") && (
+            {(() => {
+              const curRole = roles.find((r) => r.id === formData.role_id);
+              const bRole = (curRole?.base_role || curRole?.name || "").toLowerCase();
+              return bRole === "staff" || bRole === "manager";
+            })() && (
               <div className="space-y-2">
                 <Label htmlFor="edit-cinema">Chi nhánh Rạp *</Label>
                 <Select
@@ -1129,28 +1138,14 @@ const AdminUsers: React.FC = () => {
                     <SelectValue placeholder="Chọn rạp..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {cinemas.map((cinema) => {
-                      const isManagerRole =
-                        roles
-                          .find((r) => r.id === formData.role_id)
-                          ?.name?.toLowerCase() === "manager";
-                      const isAlreadyAssigned = !!(
-                        isManagerRole &&
-                        cinema.manager_id &&
-                        cinema.manager_id !== selectedUser?.id
-                      );
-
-                      return (
-                        <SelectItem
-                          key={cinema.id}
-                          value={cinema.id.toString()}
-                          disabled={isAlreadyAssigned}
-                        >
-                          {cinema.name}
-                          {isAlreadyAssigned ? ` (Đã gán quản lý khác)` : ""}
-                        </SelectItem>
-                      );
-                    })}
+                    {cinemas.map((cinema) => (
+                      <SelectItem
+                        key={cinema.id}
+                        value={cinema.id.toString()}
+                      >
+                        {cinema.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -1270,7 +1265,11 @@ const AdminUsers: React.FC = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {roles
-                    .filter((role) => role.name.toLowerCase() !== "guest")
+                    .filter(
+                      (role) =>
+                        (role.base_role || role.name || "").toLowerCase() !==
+                        "guest",
+                    )
                     .map((role) => (
                       <SelectItem key={role.id} value={role.id.toString()}>
                         {role.name}
@@ -1280,12 +1279,11 @@ const AdminUsers: React.FC = () => {
               </Select>
             </div>
 
-            {(roles
-              .find((r) => r.id === formData.role_id)
-              ?.name?.toLowerCase() === "staff" ||
-              roles
-                .find((r) => r.id === formData.role_id)
-                ?.name?.toLowerCase() === "manager") && (
+            {(() => {
+              const curRole = roles.find((r) => r.id === formData.role_id);
+              const bRole = (curRole?.base_role || curRole?.name || "").toLowerCase();
+              return bRole === "staff" || bRole === "manager";
+            })() && (
               <div className="space-y-2">
                 <Label htmlFor="create-cinema">Chi nhánh Rạp *</Label>
                 <Select
@@ -1298,26 +1296,14 @@ const AdminUsers: React.FC = () => {
                     <SelectValue placeholder="Chọn rạp..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {cinemas.map((cinema) => {
-                      const isManagerRole =
-                        roles
-                          .find((r) => r.id === formData.role_id)
-                          ?.name?.toLowerCase() === "manager";
-                      const isAlreadyAssigned = !!(
-                        isManagerRole && cinema.manager_id
-                      );
-
-                      return (
-                        <SelectItem
-                          key={cinema.id}
-                          value={cinema.id.toString()}
-                          disabled={isAlreadyAssigned}
-                        >
-                          {cinema.name}
-                          {isAlreadyAssigned ? ` (Đã gán quản lý khác)` : ""}
-                        </SelectItem>
-                      );
-                    })}
+                    {cinemas.map((cinema) => (
+                      <SelectItem
+                        key={cinema.id}
+                        value={cinema.id.toString()}
+                      >
+                        {cinema.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

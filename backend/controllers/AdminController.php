@@ -208,10 +208,31 @@ class AdminController extends BaseController {
     public function getSeatHeatmap() {
         AuthMiddleware::requireManager();
 
+        $hallId = isset($_GET['hall_id']) ? (int)$_GET['hall_id'] : 0;
+        $cinemaId = isset($_GET['cinema_id']) ? (int)$_GET['cinema_id'] : 0;
+
+        $where = [
+            "s.status IN ('Active', 'Broken')",
+            "s.row_code NOT LIKE '\\_%'",
+            "s.number < 1000"
+        ];
+        $params = [];
+
+        if ($hallId > 0) {
+            $where[] = "s.cinema_hall_id = :hall_id";
+            $params[':hall_id'] = $hallId;
+        } elseif ($cinemaId > 0) {
+            $where[] = "h.cinema_id = :cinema_id";
+            $params[':cinema_id'] = $cinemaId;
+        }
+
+        $whereSql = "WHERE " . implode(' AND ', $where);
+
         $sql = "SELECT s.row_code AS row_label,
                        s.number AS seat_number,
                        COALESCE(SUM(x.booking_count), 0) AS booking_count
                 FROM seats s
+                JOIN cinema_halls h ON s.cinema_hall_id = h.id
                 LEFT JOIN (
                     SELECT tk.seat_id, COUNT(*) AS booking_count
                     FROM tickets tk
@@ -219,10 +240,12 @@ class AdminController extends BaseController {
                     WHERE tk.status IN ('SOLD', 'USED')
                     GROUP BY tk.seat_id
                 ) x ON x.seat_id = s.id
+                $whereSql
                 GROUP BY s.row_code, s.number
                 ORDER BY s.row_code, s.number";
 
-        $stmt = $this->db->query($sql);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $max = 0;

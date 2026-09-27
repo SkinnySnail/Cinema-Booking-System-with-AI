@@ -101,16 +101,17 @@ class POSCustomer {
     }
 
     private function findRegisteredUserByPhone(string $phone): ?array {
+        $cleanPhone = preg_replace('/\D/', '', $phone);
         $stmt = $this->db->prepare(
             "SELECT u.id AS user_id, u.email, up.full_name, up.phone
              FROM user_profiles up
              INNER JOIN users u ON u.id = up.user_id
-             WHERE up.phone = :phone
+             WHERE (up.phone = :phone 
+                OR REPLACE(REPLACE(REPLACE(up.phone, ' ', ''), '.', ''), '-', '') = :clean_phone)
                AND u.status = 'Active'
-               AND u.role_id NOT IN (3, 4, 5)
              LIMIT 1"
         );
-        $stmt->execute([':phone' => $phone]);
+        $stmt->execute([':phone' => $phone, ':clean_phone' => $cleanPhone]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         return $row ?: null;

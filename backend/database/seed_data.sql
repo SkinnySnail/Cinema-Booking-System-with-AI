@@ -9,12 +9,13 @@ SET NAMES utf8mb4;
 -- ============================================
 -- 1. ROLES & MEMBERSHIPS
 -- ============================================
-INSERT IGNORE INTO roles (name) VALUES
-('Guest'),
-('Member'),
-('Staff'),
-('Manager'),
-('Admin');
+-INSERT INTO roles (id, name, code, display_name, description, base_role, is_system, is_active) VALUES
+(1, 'Guest', 'SYSTEM_GUEST', 'Khách vãng lai', 'Khách vãng lai chưa đăng nhập, chỉ xem phim, lịch chiếu và thông tin công khai', 'guest', 1, 1),
+(2, 'Member', 'SYSTEM_MEMBER', 'Thành viên', 'Khách hàng có tài khoản thành viên, đặt vé trực tuyến, tích điểm và nhận ưu đãi', 'member', 1, 1),
+(3, 'Staff', 'SYSTEM_STAFF', 'Nhân viên quầy', 'Nhân viên vận hành tại cụm rạp: bán vé tại quầy, quét vé và quản lý bắp nước', 'staff', 1, 1),
+(4, 'Manager', 'SYSTEM_MANAGER', 'Quản lý rạp', 'Quản lý cụm rạp: xếp lịch chiếu, quản lý phòng chiếu, thống kê doanh thu cơ sở', 'manager', 1, 1),
+(5, 'Admin', 'SYSTEM_ADMIN', 'Quản trị viên tối cao', 'Quản trị viên toàn quyền hệ thống (Super Admin). Có quyền truy cập tất cả tính năng', 'admin', 1, 1)
+ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), description = VALUES(description), base_role = VALUES(base_role);
 
 INSERT IGNORE INTO memberships (rank_name, min_points_required, discount_rate) VALUES
 ('Bronze', 0, 0.00),
@@ -40,6 +41,15 @@ INSERT INTO user_profiles (user_id, full_name, phone, dob, membership_id) VALUES
 (4, 'Nguyễn Văn A', '0904567890', '2000-03-10', 1),
 (5, 'Trần Thị B', '0905678901', '1998-07-25', 2),
 (6, 'Lê Văn C', '0906789012', '1988-12-05', 4);
+
+-- Gán vai trò mặc định ban đầu cho các người dùng (user_roles)
+INSERT IGNORE INTO user_roles (user_id, role_id, is_primary, reason) VALUES
+(1, 5, 1, 'Vai trò quản trị viên tối cao mặc định'),
+(2, 4, 1, 'Vai trò quản lý rạp mặc định'),
+(3, 3, 1, 'Vai trò nhân viên quầy mặc định'),
+(4, 2, 1, 'Vai trò thành viên mặc định'),
+(5, 2, 1, 'Vai trò thành viên mặc định'),
+(6, 2, 1, 'Vai trò thành viên mặc định');
 
 -- ============================================
 -- 3. GENRES & MOVIES

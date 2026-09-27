@@ -56,18 +56,32 @@ class UserController
     private function isAdmin()
     {
         try {
+            $roleName = (string)($_REQUEST['auth_user_role'] ?? '');
+            $roleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
+            if (strtolower($roleName) === 'admin' || $roleId === 5) {
+                return true;
+            }
+
             $headers = getallheaders();
-            $authHeader = $headers['Authorization'] ?? '';
+            $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
 
             if (empty($authHeader)) {
                 return false;
             }
 
-            $token = str_replace('Bearer ', '', $authHeader);
-            $payload = JWT::decode($token, Config::$jwt_secret);
+            if (preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+                $token = $matches[1];
+            } else {
+                $token = str_replace('Bearer ', '', $authHeader);
+            }
 
-            // role_id: 5 = Admin
-            return $payload && $payload['role_id'] == 5;
+            $payload = JWT::decode($token, Config::$jwt_secret);
+            if (!$payload) return false;
+
+            $tokenRoleId = (int)($payload['role_id'] ?? 0);
+            $tokenRole = (string)($payload['role'] ?? '');
+
+            return $tokenRoleId === 5 || strtolower($tokenRole) === 'admin';
         } catch (Exception $e) {
             error_log("JWT decode error in isAdmin: " . $e->getMessage());
             return false;
@@ -266,14 +280,14 @@ class UserController
             }
 
             // Assign cinema if applicable
-            if (isset($data['cinema_id']) && isset($data['role_id'])) {
+            if (!empty($data['cinema_id']) && isset($data['role_id'])) {
                 $role = $this->roleModel->getById($data['role_id']);
                 if ($role) {
-                    $roleName = strtolower($role['name']);
-                    if ($roleName === 'staff') {
-                        $this->userModel->assignStaffToCinema($userId, $data['cinema_id']);
-                    } else if ($roleName === 'manager') {
-                        $this->userModel->assignManagerToCinema($userId, $data['cinema_id']);
+                    $baseRole = strtolower($role['base_role'] ?? $role['name']);
+                    if ($baseRole === 'staff') {
+                        $this->userModel->assignStaffToCinema($userId, (int)$data['cinema_id']);
+                    } else if ($baseRole === 'manager') {
+                        $this->userModel->assignManagerToCinema($userId, (int)$data['cinema_id']);
                     }
                 }
             }
@@ -355,15 +369,15 @@ class UserController
 
                 // Handle Cinema Assignment if provided (Admin only update)
                 // We use $user['role_id'] if role isn't updated, or $data['role_id'] if it is.
-                if (isset($data['cinema_id'])) {
+                if (!empty($data['cinema_id'])) {
                     $currentRoleId = $data['role_id'] ?? $user['role_id'];
                     $role = $this->roleModel->getById($currentRoleId);
                     if ($role) {
-                        $roleName = strtolower($role['name']);
-                        if ($roleName === 'staff') {
-                            $this->userModel->assignStaffToCinema($id, $data['cinema_id']);
-                        } else if ($roleName === 'manager') {
-                            $this->userModel->assignManagerToCinema($id, $data['cinema_id']);
+                        $baseRole = strtolower($role['base_role'] ?? $role['name']);
+                        if ($baseRole === 'staff') {
+                            $this->userModel->assignStaffToCinema($id, (int)$data['cinema_id']);
+                        } else if ($baseRole === 'manager') {
+                            $this->userModel->assignManagerToCinema($id, (int)$data['cinema_id']);
                         }
                     }
                 }
@@ -499,8 +513,10 @@ class UserController
             }
 
             // Chỉ được xem profile của mình (trừ admin)
-            $roleId = (int)($_REQUEST['auth_role_id'] ?? 0);
-            if ($roleId !== 5 && $currentUserId != $id) {
+            $roleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
+            $roleName = (string)($_REQUEST['auth_user_role'] ?? '');
+            $isAdmin = ($roleId === 5 || strtolower($roleName) === 'admin' || $this->isAdmin());
+            if (!$isAdmin && $currentUserId != $id) {
                 return Response::error('Không có quyền truy cập', 403);
             }
 
@@ -539,8 +555,10 @@ class UserController
             }
 
             // Chỉ được update profile của mình (trừ khi là admin)
-            $roleId = (int)($_REQUEST['auth_role_id'] ?? 0);
-            if ($roleId !== 5 && $currentUserId != $id) {
+            $roleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
+            $roleName = (string)($_REQUEST['auth_user_role'] ?? '');
+            $isAdmin = ($roleId === 5 || strtolower($roleName) === 'admin' || $this->isAdmin());
+            if (!$isAdmin && $currentUserId != $id) {
                 return Response::error('Không có quyền truy cập', 403);
             }
 
@@ -692,7 +710,7 @@ class UserController
                 return Response::error('Chưa đăng nhập', 401);
             }
 
-            if ($currentUserId != $id) {
+            if (!$this->isAdmin() && $currentUserId != $id) {
                 return Response::error('Không có quyền truy cập', 403);
             }
 

@@ -44,7 +44,13 @@ class HallController
             return null;
         }
 
-        $stmt = $this->db->prepare("SELECT id FROM cinemas WHERE manager_id = :uid LIMIT 1");
+        $stmt = $this->db->prepare("
+            SELECT COALESCE(cs.cinema_id, c.id) as id
+            FROM users u
+            LEFT JOIN cinema_staff cs ON cs.user_id = u.id
+            LEFT JOIN cinemas c ON c.manager_id = u.id
+            WHERE u.id = :uid LIMIT 1
+        ");
         $stmt->execute([':uid' => $userId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -99,6 +105,11 @@ class HallController
         $input = json_decode(file_get_contents('php://input'), true);
         if (empty($input['cinema_id']) || empty($input['name'])) {
             return Response::error('Thiếu thông tin rạp hoặc tên phòng', 400);
+        }
+
+        $totalSeats = isset($input['total_seats']) ? (int) $input['total_seats'] : 0;
+        if ($totalSeats > 0 && ($totalSeats < 20 || $totalSeats > 350)) {
+            return Response::error('Số lượng ghế của phòng chiếu phải từ 20 đến 350 ghế', 400);
         }
 
         $this->ensureManagerCanAccessCinema((int) $input['cinema_id']);
@@ -179,6 +190,16 @@ class HallController
         $input = json_decode(file_get_contents('php://input'), true);
         if (!isset($input['seats']) || !is_array($input['seats'])) {
             return Response::error('Dữ liệu ghế không hợp lệ', 400);
+        }
+
+        // Đếm số ghế thực tế (Active + Broken, loại trừ Inactive/lối đi)
+        $realSeatsCount = count(array_filter($input['seats'], function($s) {
+            $status = $s['status'] ?? 'Active';
+            return $status !== 'Inactive';
+        }));
+
+        if ($realSeatsCount < 20 || $realSeatsCount > 350) {
+            return Response::error("Số lượng ghế thực tế của phòng phải từ 20 đến 350 ghế (hiện có {$realSeatsCount} ghế)", 400);
         }
 
         $result = $this->seatModel->replaceLayout($id, $input['seats']);

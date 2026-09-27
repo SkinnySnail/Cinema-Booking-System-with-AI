@@ -167,6 +167,7 @@ export const API_ENDPOINTS = {
   MANAGER_TRANSACTIONS: `${API_BASE_URL}/api/manager/transactions`,
   MANAGER_TRANSACTIONS_EXPORT_DETAILS: `${API_BASE_URL}/api/manager/transactions/export-details`,
   MANAGER_CONCESSIONS: `${API_BASE_URL}/api/manager/concessions`,
+  MANAGER_CONCESSIONS_IMPORT: `${API_BASE_URL}/api/manager/concessions/import`,
   MANAGER_CONCESSION_INVENTORY: (id: number) =>
     `${API_BASE_URL}/api/manager/concessions/${id}/inventory`,
   CONCESSIONS_AVAILABLE_BY_CINEMA: (cinemaId: number) =>

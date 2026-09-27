@@ -27,6 +27,8 @@ class SystemConfigController extends BaseController {
      */
     public function updateSettings() {
         try {
+            AuthMiddleware::requirePermission('system.settings');
+
             // Get JSON payload
             $data = json_decode(file_get_contents('php://input'), true);
 

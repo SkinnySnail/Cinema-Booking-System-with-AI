@@ -32,6 +32,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { API_ENDPOINTS, apiCall } from "@/lib/api";
 import { useAuth } from "@/contexts/AppContext";
+import { usePermissions } from "@/hooks/usePermissions";
+import { AlertTriangle } from "lucide-react";
 
 interface Review {
   id: number;
@@ -51,6 +53,9 @@ interface Review {
 const ManagerReviews: React.FC = () => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canViewAll = hasPermission("reviews.view_all");
+
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterRating, setFilterRating] = useState("all");
@@ -58,6 +63,11 @@ const ManagerReviews: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   const fetchReviews = useCallback(async () => {
+    if (!canViewAll) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -164,6 +174,22 @@ const ManagerReviews: React.FC = () => {
           reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
         ).toFixed(1)
       : "0.0";
+
+  if (!canViewAll) {
+    return (
+      <div className="p-6">
+        <div className="flex flex-col items-center justify-center p-12 text-center rounded-2xl border border-destructive/20 bg-destructive/5 space-y-4">
+          <AlertTriangle className="w-12 h-12 text-destructive" />
+          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
+            Truy Cập Bị Từ Chối
+          </h2>
+          <p className="text-slate-500 max-w-md text-sm">
+            Vai trò hiện tại của bạn không có quyền duyệt hoặc quản lý đánh giá phim (yêu cầu quyền: <code className="text-destructive font-mono font-bold">reviews.view_all</code>).
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

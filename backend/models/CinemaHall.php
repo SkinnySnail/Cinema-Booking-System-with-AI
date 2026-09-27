@@ -107,7 +107,7 @@ class CinemaHall
                     FROM seats s
                     JOIN seat_types st ON s.seat_type_id = st.id
                     WHERE s.cinema_hall_id = :hall_id
-                    ORDER BY s.row_code ASC, s.number ASC";
+                    ORDER BY s.id ASC";
 
             $stmt = $this->db->prepare($sql);
             $stmt->bindParam(':hall_id', $hallId, PDO::PARAM_INT);
