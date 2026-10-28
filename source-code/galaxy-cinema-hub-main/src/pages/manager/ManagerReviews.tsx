@@ -31,6 +31,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { API_ENDPOINTS, apiCall } from "@/lib/api";
+import SentimentInsights from "@/components/ai/SentimentInsights";
 import { useAuth } from "@/contexts/AppContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { AlertTriangle } from "lucide-react";
@@ -245,6 +246,7 @@ const ManagerReviews: React.FC = () => {
       </div>
 
       {/* Filters & Table */}
+      <SentimentInsights reviews={filteredReviews} />
       <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

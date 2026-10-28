@@ -30,6 +30,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { API_ENDPOINTS, apiCall } from "@/lib/api";
+import SentimentInsights from "@/components/ai/SentimentInsights";
 
 interface Review {
   id: number;
@@ -311,6 +312,7 @@ const AdminReviews: React.FC = () => {
       </div>
 
       {/* Filters & Table */}
+      <SentimentInsights reviews={filteredReviews} />
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

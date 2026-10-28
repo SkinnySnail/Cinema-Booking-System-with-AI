@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import HeroBanner from "@/components/home/HeroBanner";
+import RecommendationsSection from "@/components/ai/RecommendationsSection";
 import QuickBookingBar from "@/components/booking/QuickBookingBar";
 import MovieCard from "@/components/movie/MovieCard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -100,6 +101,7 @@ const HomePage: React.FC = () => {
         {/* Quick Booking Bar */}
         <div className="container mx-auto px-4">
           <QuickBookingBar />
+        <RecommendationsSection />
         </div>
 
         {/* Movie Section */}

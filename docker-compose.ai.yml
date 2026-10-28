@@ -1,0 +1,17 @@
+# Optional local-development overlay. Not loaded by the default or deployment stack.
+# AI_SERVICE_KEY must be explicitly configured before using this file.
+services:
+  ai:
+    profiles: [ai]
+    build: ./ai-service
+    restart: unless-stopped
+    environment:
+      AI_SERVICE_KEY: ${AI_SERVICE_KEY:?Set a private AI_SERVICE_KEY before starting AI}
+      OMP_NUM_THREADS: "1"
+    expose: ["8001"]
+
+  app:
+    environment:
+      AI_SERVICE_URL: http://ai:8001
+      AI_SERVICE_KEY: ${AI_SERVICE_KEY:?Set a private AI_SERVICE_KEY before starting AI}
+      AI_ENABLED: "true"

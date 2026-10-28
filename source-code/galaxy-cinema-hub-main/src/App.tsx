@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, BookingProvider } from "@/contexts/AppContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import CinemaAssistant from "@/components/ai/CinemaAssistant";
 
 // Pages
 import HomePage from "./pages/HomePage";
@@ -119,6 +120,7 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
               <SettingsLoader />
+              <CinemaAssistant />
               <BookingFlowGuard />
               <Routes>
                 {/* Client Routes */}

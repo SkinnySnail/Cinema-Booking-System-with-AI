@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import RecommendationsSection from "@/components/ai/RecommendationsSection";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -1569,6 +1570,8 @@ const MovieDetailPage: React.FC = () => {
       </main>
 
       {/* Embedded YouTube Trailer Modal */}
+      <RecommendationsSection movieId={Number(movie.id)} />
+
       {youtubeId && (
         <Dialog open={isTrailerOpen} onOpenChange={setIsTrailerOpen}>
           <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black/95 border border-white/20 aspect-video rounded-2xl shadow-2xl">

@@ -98,6 +98,10 @@ $router->get('/api/health', function () {
 // ============================================
 // HALL ROUTES
 // ============================================
+$router->get('/api/ai/recommendations', 'AIController@recommendations');
+$router->post('/api/ai/chat', 'AIController@chat');
+$router->post('/api/ai/reviews/sentiment', 'AIController@sentiments');
+
 $router->post('/api/halls', 'HallController@create'); // Admin
 $router->get('/api/halls/:id', 'HallController@show'); // Admin
 $router->put('/api/halls/:id', 'HallController@update'); // Admin

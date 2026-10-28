@@ -6,6 +6,10 @@ backend/.env
 /vendor/
 /backend/vendor/
 /node_modules/
+ai-service/.venv/
+__pycache__/
+.pytest_cache/
+**/.pnpm-store/
 
 # Build artifacts / cache
 *.log

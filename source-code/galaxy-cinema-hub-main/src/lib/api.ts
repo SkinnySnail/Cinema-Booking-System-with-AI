@@ -5,6 +5,9 @@ export const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export const API_ENDPOINTS = {
+  AI_RECOMMENDATIONS: `${API_BASE_URL}/api/ai/recommendations`,
+  AI_CHAT: `${API_BASE_URL}/api/ai/chat`,
+  AI_SENTIMENT: `${API_BASE_URL}/api/ai/reviews/sentiment`,
   // Auth
   SEND_VERIFICATION: `${API_BASE_URL}/api/auth/send-verification`,
   VERIFY_EMAIL: `${API_BASE_URL}/api/auth/verify-email`,

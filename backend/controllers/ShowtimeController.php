@@ -109,6 +109,10 @@ class ShowtimeController
             $errorMessage = 'Phim phân loại C - Cấm không được phép tạo suất chiếu';
             return false;
         }
+        if (($movie['status'] ?? '') === 'Ended') {
+            $errorMessage = 'Phim đã ngừng chiếu, không thể tạo suất chiếu';
+            return false;
+        }
 
         $releaseRaw = (string) ($movie['release_date'] ?? '');
         if (!empty($releaseRaw)) {
@@ -724,7 +728,8 @@ class ShowtimeController
         DateTime $slotStart,
         DateTime $dayEnd,
         $sameSlotMovieCounts = [],
-        $rerollToken = ''
+        $rerollToken = '',
+        $demandScores = []
     ) {
         $scored = [];
 
@@ -749,6 +754,9 @@ class ShowtimeController
 
             // Score cang nho cang duoc uu tien: tinh them 1 de score phan anh dung "next slot"
             $score = ($count + 1) / $weight;
+            // Forecast only ranks eligible candidates; it never overrides hard constraints.
+            $forecastOccupancy = $demandScores[(int)$slotStart->format('N') - 1][intdiv((int)$slotStart->format('H'), 3) * 3][$movieId] ?? null;
+            if ($forecastOccupancy !== null) $score -= 0.8 * (float)$forecastOccupancy;
 
             // Giam tinh trang cung 1 khung gio tat ca phong deu chieu cung 1 phim
             $sameSlotCount = (int) ($sameSlotMovieCounts[$movieId] ?? 0);
@@ -817,6 +825,7 @@ class ShowtimeController
     {
         try {
             AuthMiddleware::requirePermission('showtimes.auto_generate');
+            AuthMiddleware::requireManager();
 
             $input = json_decode(file_get_contents('php://input'), true) ?: [];
 
@@ -838,6 +847,7 @@ class ShowtimeController
                 ? (int) $input['max_showtimes_per_hall_per_day']
                 : 0;
             $dryRun = !empty($input['dry_run']);
+            $useAI = !empty($input['use_ai']);
 
             if ($cinemaId <= 0) {
                 return Response::error('Thiếu cinema_id', 400);
@@ -871,6 +881,14 @@ class ShowtimeController
             $cinema = $this->cinemaModel->getById($cinemaId);
             if (!$cinema) {
                 return Response::error('Rạp không tồn tại', 404);
+            }
+            $actorId = (int)($_REQUEST['auth_user_id'] ?? 0);
+            $isAdmin = (int)($_REQUEST['auth_user_role_id'] ?? 0) === 5 || ($_REQUEST['auth_user_role'] ?? '') === 'Admin';
+            if (!$isAdmin) {
+                $scopeDb = Database::getInstance()->getConnection();
+                $scope = $scopeDb->prepare('SELECT id FROM cinemas WHERE id=? AND (manager_id=? OR EXISTS(SELECT 1 FROM cinema_staff cs WHERE cs.cinema_id=cinemas.id AND cs.user_id=?))');
+                $scope->execute([$cinemaId,$actorId,$actorId]);
+                if (!$scope->fetch()) return Response::forbidden('Bạn chỉ được xếp lịch cho rạp phụ trách');
             }
 
             $halls = $this->hallModel->getByCinemaId($cinemaId);
@@ -946,6 +964,10 @@ class ShowtimeController
             if (empty($schedulingMovies)) {
                 return Response::error('Không còn phim nào để xếp lịch sau khi áp dụng danh sách loại trừ', 400);
             }
+            $db = Database::getInstance()->getConnection();
+            $aiForecast = $useAI
+                ? (new AISchedulingService())->forecast($db,$cinemaId,$schedulingMovies,$startDate)
+                : ['used'=>false,'mode'=>'disabled','training_samples'=>0,'scores'=>[]];
 
             $created = [];
             $skipped = 0;
@@ -972,6 +994,15 @@ class ShowtimeController
                     $dailyMovieCounts[(int) $sm['id']] = 0;
                 }
                 $slotMovieCounts = []; // key: Y-m-d H:i => [movieId => count]
+                $existing = $db->prepare("SELECT s.movie_id,m.origin,COUNT(*) AS total FROM showtimes s
+                    JOIN cinema_halls h ON h.id=s.cinema_hall_id JOIN movies m ON m.id=s.movie_id
+                    WHERE h.cinema_id=? AND DATE(s.start_time)=? GROUP BY s.movie_id,m.origin");
+                $existing->execute([$cinemaId,$dateStr]);
+                foreach ($existing->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $dailyTotal += (int)$row['total'];
+                    if ($row['origin']==='Vietnam') $dailyVN += (int)$row['total'];
+                    $dailyMovieCounts[(int)$row['movie_id']] = (int)$row['total'];
+                }
 
                 foreach ($halls as $hall) {
                     $hallId = (int) $hall['id'];
@@ -984,9 +1015,10 @@ class ShowtimeController
                     }
 
                     $lastMovieId = null;
+                    $hallCreatedCount = 0;
 
                     while ($current < $dayEnd) {
-                        if ($maxShowtimesPerHallPerDay > 0 && $dailyTotal >= $maxShowtimesPerHallPerDay) {
+                        if ($maxShowtimesPerHallPerDay > 0 && $hallCreatedCount >= $maxShowtimesPerHallPerDay) {
                             break;
                         }
 
@@ -1020,8 +1052,9 @@ class ShowtimeController
                             if (!empty($vnOnly)) {
                                 $candidates = $vnOnly;
                             } else {
-                                $vnFallback = array_values(array_filter($schedulingMovies, function ($m) {
-                                    return ($m['origin'] ?? '') === 'Vietnam';
+                                $vnFallback = array_values(array_filter($schedulingMovies, function ($m) use ($current) {
+                                    $error = null;
+                                    return ($m['origin'] ?? '') === 'Vietnam' && $this->canScheduleMovieAtTime($m,$current->format('Y-m-d H:i:s'),$error);
                                 }));
                                 if (!empty($vnFallback)) {
                                     $candidates = $vnFallback;
@@ -1038,10 +1071,16 @@ class ShowtimeController
                             $current,
                             $dayEnd,
                             $slotMovieCounts[$current->format('Y-m-d H:i')] ?? [],
-                            $rerollToken
+                            $rerollToken,
+                            $aiForecast['scores']
                         );
 
                         if (!$selectedMovie) {
+                            break;
+                        }
+                        // Cannot meet the configured quota without an eligible domestic movie.
+                        if ($mustPickVietnam && ($selectedMovie['origin'] ?? '') !== 'Vietnam') {
+                            $skipped++;
                             break;
                         }
 
@@ -1088,6 +1127,7 @@ class ShowtimeController
                         ];
 
                         $dailyTotal++;
+                        $hallCreatedCount++;
                         $dailyMovieCounts[$movieId] = (int) ($dailyMovieCounts[$movieId] ?? 0) + 1;
                         $slotKey = (new DateTime($startTime))->format('Y-m-d H:i');
                         if (!isset($slotMovieCounts[$slotKey])) {
@@ -1124,6 +1164,7 @@ class ShowtimeController
                     'reroll_token' => $rerollToken,
                     'created_count' => count($created),
                     'skipped_count' => $skipped,
+                    'ai' => ['requested'=>$useAI,'used'=>$aiForecast['used'],'mode'=>$aiForecast['mode'],'training_samples'=>$aiForecast['training_samples']],
                 ],
                 'created_showtimes' => $created,
             ]);
