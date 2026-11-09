@@ -2,6 +2,10 @@
 
 Bản triển khai bổ sung bốn nhóm chức năng AI vào PHP/React hiện có. Python chạy như dịch vụ nội bộ; PHP lấy dữ liệu thật từ MySQL, xác thực người dùng và trả kết quả cho React. Không cần thay đổi schema hoặc khóa API của nhà cung cấp AI.
 
+## Công cụ tune cục bộ
+
+Thư mục [`local-ai-tuning/`](../local-ai-tuning/README.md) bổ sung quy trình chuẩn bị dữ liệu, chia train/validation/test, dò tham số, đánh giá và xuất bundle cho cả bốn tác vụ. Dịch vụ Python có thể nạp bundle bằng `AI_MODEL_DIR`; mặc định vẫn dùng baseline khi chưa đặt biến này. Forecast đã truyền thêm `cinema_id` để chỉ dùng model được huấn luyện cho đúng rạp. Hướng dẫn dữ liệu, lệnh chạy và giới hạn nằm trong README của thư mục đó.
+
 ## Chức năng và vị trí mã nguồn
 
 | Module | Luồng hoạt động | Mã nguồn |
@@ -64,6 +68,46 @@ docker compose -f docker.yml -f docker-compose.ai.yml --profile ai up --build db
 ```
 
 Không có khóa, Compose dừng với thông báo cấu hình thiếu. Cấu hình production chưa được thay đổi. Khi đưa lên môi trường khác cần cấp khóa riêng qua hệ thống quản lý biến môi trường tương ứng.
+
+## Chạy Trợ lý điện ảnh với bản tune Ollama
+
+Bật Docker Desktop và Ollama trên Windows. Kiểm tra có qwen3-embedding:4b và qwen3-embedding:0.6b trong ollama list. Chạy các lệnh sau ở thư mục gốc repo. Nếu thư mục chatbot-bundle đã có manifest.json thì dùng bundle hiện có và bắt đầu từ bước đặt biến môi trường.
+
+~~~powershell
+$tunePython = '.\local-ai-tuning\.venv\Scripts\python.exe'
+& $tunePython local-ai-tuning/export_ollama_bundle.py --runs local-ai-tuning/workspace/ollama-experiment/runs --out local-ai-tuning/workspace/chatbot-bundle
+$env:AI_SERVICE_KEY = python -c "import secrets; print(secrets.token_hex(32))"
+$env:CINEMA_WEB_PORT = '8081'
+$env:CINEMA_DB_PORT = '3308'
+docker compose -p galaxy-cinema-local -f docker.yml -f docker-compose.ai.yml -f docker-compose.ollama.yml --profile ai up -d --build db ai app frontend
+~~~
+
+Mở [Trợ lý điện ảnh ở cổng 8081](http://localhost:8081) sau khi frontend build xong. Container AI gọi Ollama trên máy Windows qua host.docker.internal và nạp bundle từ một thư mục chỉ đọc. Sau khi sửa React, khởi động lại container frontend để tạo bản build mới.
+
+| Câu hỏi | Luồng xử lý |
+|---|---|
+| “Tối nay rạp Nguyễn Du còn suất nào không?” | Intent 4B nhận câu hỏi, PHP tìm suất tương lai từ 18 giờ trong MySQL. |
+| “Phân tích bình luận: Phim quá hay, diễn viên tuyệt vời!” | Model 0.6B phân tích văn bản bạn nhập và trả nhãn kèm độ tin cậy. Trang quản lý đánh giá cũng dùng model này. |
+| “Gợi ý phim giống Dune: Part Two” | Model 0.6B tạo embedding danh mục phim và ranker áp dụng tham số đã tune. Khách mới hỏi gợi ý chung nhận danh sách theo độ phổ biến. |
+| “Dự báo suất đông tại Galaxy Nguyễn Du tối nay” | PHP lấy các suất tương lai. AI nạp model đã đánh giá của đúng rạp hoặc ước lượng từ lịch sử vé tại rạp. Khi dữ liệu còn ít, chatbot báo chưa đủ lịch sử. |
+
+JSON của API chat có intent_model và model để xác minh model thực tế của từng lượt. Ví dụ, luồng cảm xúc hiển thị ollama/qwen3-embedding:0.6b+logistic-regression. Khi Ollama gián đoạn hoặc digest không khớp, các chức năng văn bản dùng TF-IDF dự phòng. Bộ gợi ý MovieLens trong bundle dùng cho thử nghiệm cục bộ và đã có báo cáo so với baseline phổ biến.
+
+Dữ liệu seed của repo gồm các suất tháng 2 và tháng 3 năm 2026. Thêm lịch chiếu hiện tại trong màn hình quản trị để chatbot có kết quả mở bán. Để tune dự báo cho một rạp, xuất CSV chỉ chứa lịch sử suất và tổng vé từ MySQL.
+
+~~~powershell
+docker exec galaxy_cinema_app sh -c 'export TUNING_DB_DSN="mysql:host=$DB_HOST;dbname=$DB_NAME;charset=utf8mb4" TUNING_DB_USER="$DB_USER" TUNING_DB_PASSWORD="$DB_PASSWORD"; php local-ai-tuning/export_database.php --forecast-only --days=180 --cinema-id=1 --out=local-ai-tuning/workspace/forecast-data-01'
+& $tunePython local-ai-tuning/tune.py prepare --task forecast --cinema-id 1 --input local-ai-tuning/workspace/forecast-data-01/forecast.csv --out local-ai-tuning/workspace/forecast-prepared-01
+& $tunePython local-ai-tuning/tune.py tune --data local-ai-tuning/workspace/forecast-prepared-01 --out local-ai-tuning/workspace/forecast-run-01
+& $tunePython local-ai-tuning/tune.py evaluate --data local-ai-tuning/workspace/forecast-prepared-01 --run local-ai-tuning/workspace/forecast-run-01
+& $tunePython local-ai-tuning/tune.py bundle --runs local-ai-tuning/workspace/forecast-run-01 --out local-ai-tuning/workspace/forecast-bundle-01
+& $tunePython local-ai-tuning/export_ollama_bundle.py --runs local-ai-tuning/workspace/ollama-experiment/runs --forecast-bundle local-ai-tuning/workspace/forecast-bundle-01 --out local-ai-tuning/workspace/chatbot-bundle-02
+$env:CINEMA_AI_BUNDLE_DIR = './local-ai-tuning/workspace/chatbot-bundle-02'
+docker compose -p galaxy-cinema-local -f docker.yml -f docker-compose.ai.yml -f docker-compose.ollama.yml --profile ai up -d ai
+~~~
+
+Đổi cinema-id theo rạp cần huấn luyện. Bước chuẩn bị yêu cầu ít nhất 40 suất lịch sử của rạp. Bundle chỉ ghép các model dự báo đạt điều kiện trên tập test, có nguồn dữ liệu thực và khớp ID rạp. Artifact theo ngày từ Kaggle được giữ trong thư mục thực nghiệm.
+
 
 ## Hành vi khi thiếu dữ liệu hoặc mất kết nối
 

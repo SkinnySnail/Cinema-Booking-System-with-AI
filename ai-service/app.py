@@ -7,14 +7,22 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from engine import LanguageModels, forecast, recommend
+from model_bundle import ModelBundle
+from ollama_adapter import OllamaEmbeddings, OllamaUnavailable
 
 models: LanguageModels | None = None
+bundle: ModelBundle | None = None
+movie_encoder: OllamaEmbeddings | None = None
 
 
 @asynccontextmanager
 async def lifespan(app):
-    global models
-    models = LanguageModels()
+    global models, bundle, movie_encoder
+    directory = os.getenv("AI_MODEL_DIR")
+    bundle = ModelBundle(directory) if directory else None
+    models = LanguageModels(bundle)
+    tuning = bundle.get("recommendation") if bundle else None
+    movie_encoder = OllamaEmbeddings(tuning["ollama"]) if tuning and "ollama" in tuning else None
     yield
 
 
@@ -59,18 +67,39 @@ class SentimentRequest(Payload):
 
 
 class ForecastRequest(Payload):
+    cinema_id: int = Field(default=0, ge=0)
     history: list[dict] = Field(default_factory=list, max_length=10000)
     candidates: list[dict] = Field(default_factory=list, max_length=30000)
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_ready": models is not None, "version": 1}
+    return {"status": "ok", "model_ready": models is not None, "version": 1,
+            "models": bundle.status() if bundle else {"bundle_id": None, "tasks": []}}
 
 
 @app.post("/recommendations", dependencies=[Depends(internal_access)])
 def recommendations(payload: RecommendationRequest):
-    return recommend(payload.model_dump())
+    tuning = bundle.get("recommendation") if bundle else None
+    data = payload.model_dump()
+    if movie_encoder and payload.movies and (payload.movie_id or (payload.user_id and any(
+        int(event["user_id"]) == payload.user_id for event in payload.interactions
+    ))):
+        # Match the title + genres representation used to tune the ranking weights.
+        texts = [f"{movie.get('title') or ''} {movie.get('genres') or ''}" for movie in payload.movies]
+        try:
+            vectors = movie_encoder.encode(texts, catalog=True)
+        except OllamaUnavailable:
+            result = recommend(data)
+            result["model"] = "hybrid-tfidf-collaborative-svd-fallback"
+            return result
+        result = recommend(data, tuning, vectors)
+        result["model"] = f"ollama/{movie_encoder.model}+hybrid-svd"
+        return result
+    result = recommend(data, tuning)
+    if result["mode"] == "cold_start":
+        result["model"] = "popularity"
+    return result
 
 
 @app.post("/chat", dependencies=[Depends(internal_access)])
@@ -85,4 +114,5 @@ def sentiment(payload: SentimentRequest):
 
 @app.post("/forecast", dependencies=[Depends(internal_access)])
 def demand_forecast(payload: ForecastRequest):
-    return forecast(payload.model_dump())
+    trained = bundle.get(f"forecast:{payload.cinema_id}") if bundle else None
+    return forecast(payload.model_dump(), trained)

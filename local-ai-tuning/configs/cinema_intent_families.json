@@ -1,0 +1,92 @@
+{
+  "greeting": [
+    ["Xin chào {}", "bạn", "Galaxy", "anh", "chị", "trợ lý", "mọi người", "các bạn", "ad"],
+    ["Chào {}, có ai trực không?", "rạp", "admin", "quầy hỗ trợ", "đội chăm sóc", "bên mình", "mấy bạn", "Galaxy", "tổng đài"],
+    ["Hello {}, mình mới vào đây", "bạn ơi", "team", "Galaxy", "trợ lý", "ad ơi", "các bạn", "mọi người", "rạp"],
+    ["{} tốt lành nha", "Chào buổi sáng", "Chào buổi trưa", "Chào buổi tối", "Chúc ngày mới", "Chúc cuối tuần", "Chúc buổi chiều", "Chúc thứ hai", "Chúc chủ nhật"],
+    ["{} ơi, nghe mình nói không?", "Bot", "Bạn", "Ad", "Chị", "Anh", "Rạp", "Galaxy", "Mọi người"],
+    ["Mình ghé qua gửi lời chào tới {}", "đội ngũ Galaxy", "nhân viên rạp", "trợ lý ảo", "bạn hỗ trợ", "mọi người", "các bạn ở quầy", "bên Galaxy", "admin"],
+    ["{} đang hỗ trợ mình vậy?", "Ai", "Bạn nào", "Anh chị nào", "Bot nào", "Trợ lý nào", "Nhân viên nào", "Admin nào", "Đội nào"],
+    ["{} bạn, lâu rồi mới ghé", "Ê chào", "Hey", "Hi", "Hallo", "Chào", "Hello", "Xin chào", "Chào lại"]
+  ],
+  "recommend": [
+    ["Gợi ý vài phim {} đáng xem", "hài", "kinh dị", "hành động", "hoạt hình", "lãng mạn", "trinh thám", "viễn tưởng", "phiêu lưu"],
+    ["Mình nên xem phim gì khi đi cùng {}?", "gia đình", "bạn gái", "bố mẹ", "con nhỏ", "đồng nghiệp", "nhóm bạn", "anh trai", "người yêu"],
+    ["Có tác phẩm nào giống {} không?", "Avatar", "Dune", "Mai", "The Batman", "Oppenheimer", "Inside Out", "Coco", "Interstellar"],
+    ["Chọn giúp mình một phim {} để giải trí", "nhẹ nhàng", "ngắn", "Việt", "mới", "có nhiều cảnh đẹp", "ấm áp", "không quá đáng sợ", "có nhạc hay"],
+    ["Nếu thích {} thì nên thử phim nào?", "cảnh hành động", "chuyện tình buồn", "truyện trinh thám", "robot", "thần thoại", "phim Hàn", "khám phá vũ trụ", "chuyện gia đình"],
+    ["Top phim {} mà bạn thấy hay là gì?", "tuần này", "tháng này", "phù hợp trẻ em", "có kết thúc vui", "đang ra rạp", "dành cho cặp đôi", "có nhiều phần", "được đánh giá tốt"],
+    ["{} có phim nào đáng bỏ tiền xem không?", "Dạo này", "Cuối tuần", "Dịp nghỉ lễ", "Tháng tới", "Tối nay", "Ở rạp", "Đợt này", "Tuần sau"],
+    ["Mình phân vân quá, tư vấn một bộ phim cho {}", "buổi hẹn đầu", "buổi xem một mình", "ngày sinh nhật", "cả nhà", "hai mẹ con", "một tối thư giãn", "nhóm bạn", "buổi cuối tuần"]
+  ],
+  "showtimes": [
+    ["Tối nay {} chiếu lúc nào?", "Avatar", "Dune", "Mai", "Coco", "Mưa Đỏ", "Batman", "Inside Out", "Lật Mặt"],
+    ["Rạp {} còn suất nào vào ngày mai?", "Nguyễn Du", "Tân Bình", "Kinh Dương Vương", "Quang Trung", "Mipec", "Bến Tre", "Trung Chánh", "Huỳnh Tấn Phát"],
+    {"phoatis_line": 83, "template": ["Cho tôi xem các suất chiếu ở {} vào thứ bảy tới", "Nguyễn Du", "Tân Bình", "Quang Trung", "Bến Tre", "Mipec", "Trung Chánh", "Sala", "Đà Nẵng"]},
+    {"phoatis_line": 107, "template": ["Có suất {} trong khoảng từ 6 giờ chiều đến 8 giờ tối thứ sáu không?", "Dune", "Coco", "Mai", "Avatar", "Batman", "Lật Mặt", "Mưa Đỏ", "Inside Out"]},
+    ["Mấy giờ có suất cuối cho phim {}?", "Mai", "Dune", "Coco", "Avatar", "Inside Out", "Batman", "Mưa Đỏ", "Lật Mặt"],
+    ["Cho mình xem lịch chiếu {} ở Galaxy", "hôm nay", "ngày mai", "thứ bảy", "chủ nhật", "thứ hai", "sáng mai", "chiều nay", "tối thứ sáu"],
+    ["{} có chiếu phim sau 21 giờ không?", "Nguyễn Du", "Quang Trung", "Tân Bình", "Bến Tre", "Mipec", "Sala", "Trung Chánh", "Huỳnh Tấn Phát"],
+    ["Mình tra lịch phim {} ở đâu?", "Dune", "Coco", "Avatar", "Mai", "Batman", "Inside Out", "Mưa Đỏ", "Lật Mặt"]
+  ],
+  "booking": [
+    ["Mình muốn đặt {} vé xem phim", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám"],
+    ["Chỉ mình cách chọn ghế {} khi mua vé nhé", "ở giữa", "gần lối đi", "cạnh bạn", "hàng cuối", "hàng G", "phía sau", "đôi", "VIP"],
+    ["Có thể giữ {} ghế liền nhau được không?", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"],
+    ["Tôi cần mua vé {} trên web", "cho trẻ em", "cho hai người", "cho cả nhà", "suất cuối", "cuối tuần", "phim Việt", "ghế đôi", "buổi tối"],
+    ["Mua vé cho {} bắt đầu từ chỗ nào?", "Avatar", "Mai", "Dune", "Coco", "Batman", "Lật Mặt", "Inside Out", "Mưa Đỏ"],
+    ["Đặt chỗ suất {} hộ mình với", "18 giờ", "19 giờ", "20 giờ", "21 giờ", "sáng mai", "cuối tuần", "thứ sáu", "trưa nay"],
+    ["Muốn đổi vị trí sang ghế {} trước khi đặt thì bấm đâu?", "A1", "B2", "C3", "D4", "E5", "F6", "G7", "H8"],
+    ["Vé online cho {} có phải tạo tài khoản mới mua được không?", "hai bạn", "nhóm đông", "một người", "trẻ nhỏ", "cặp đôi", "cả nhà", "khách vãng lai", "người lớn"]
+  ],
+  "cinemas": [
+    ["Địa chỉ của Galaxy {} là gì?", "Nguyễn Du", "Tân Bình", "Quang Trung", "Mipec", "Bến Tre", "Sala", "Trung Chánh", "Kinh Dương Vương"],
+    ["Có rạp Galaxy nào gần {} không?", "quận 1", "quận 5", "quận 7", "Tân Phú", "Gò Vấp", "Thủ Đức", "Bình Tân", "Phú Nhuận"],
+    ["Chỉ đường tới chi nhánh {} giúp mình", "Nguyễn Du", "Tân Bình", "Quang Trung", "Mipec", "Bến Tre", "Sala", "Trung Chánh", "Kinh Dương Vương"],
+    ["Galaxy có cơ sở ở {} chưa?", "Hà Nội", "Đà Nẵng", "Cần Thơ", "Bến Tre", "Huế", "Hải Phòng", "Hạ Long", "Vũng Tàu"],
+    ["Rạp {} có chỗ gửi xe không?", "Nguyễn Du", "Tân Bình", "Quang Trung", "Mipec", "Bến Tre", "Sala", "Trung Chánh", "Kinh Dương Vương"],
+    ["Xin số điện thoại của chi nhánh {}", "Nguyễn Du", "Tân Bình", "Quang Trung", "Mipec", "Bến Tre", "Sala", "Trung Chánh", "Kinh Dương Vương"],
+    ["Ở {} thì tới rạp nào tiện nhất?", "quận 1", "quận 5", "quận 7", "Tân Phú", "Gò Vấp", "Thủ Đức", "Bình Tân", "Phú Nhuận"],
+    ["Cơ sở {} nằm ở tầng mấy?", "Nguyễn Du", "Tân Bình", "Quang Trung", "Mipec", "Bến Tre", "Sala", "Trung Chánh", "Kinh Dương Vương"]
+  ],
+  "concessions": [
+    ["Ở quầy bắp nước có {} không?", "bắp phô mai", "bắp caramel", "coca", "trà đào", "nước suối", "khoai tây", "hotdog", "nachos"],
+    ["Combo {} ở rạp giá bao nhiêu?", "một người", "hai người", "gia đình", "bắp ngọt", "bắp mặn", "bắp nước lớn", "trẻ em", "nhóm bạn"],
+    ["Cho mình xem menu {} của rạp", "đồ uống", "bắp", "snack", "món ăn nhẹ", "nước ngọt", "combo", "nước trái cây", "đồ ăn"],
+    ["Có thể thêm {} vào đơn vé không?", "bắp rang", "một ly nước", "hai chai nước", "combo lớn", "nachos", "hotdog", "bắp caramel", "trà"],
+    ["Mình muốn mua {} sau khi đã chọn vé", "bắp", "nước", "combo đôi", "bánh", "snack", "bắp phô mai", "nước ngọt", "hai phần bắp"],
+    ["Một phần {} có đủ cho hai người không?", "bắp lớn", "nachos", "combo đôi", "khoai tây", "bắp caramel", "bắp ngọt", "bắp phô mai", "snack"],
+    ["Có được đổi đồ uống trong combo sang {} không?", "nước suối", "coca", "pepsi", "trà đào", "trà chanh", "nước cam", "soda", "nước ép"],
+    ["{} đặt trước trên website rồi nhận ở quầy được chứ?", "Bắp", "Nước", "Combo", "Bắp phô mai", "Bắp caramel", "Hotdog", "Snack", "Trà đào"]
+  ],
+  "loyalty": [
+    ["Mua {} vé thì được tích bao nhiêu điểm?", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám"],
+    ["Cho mình xem {} điểm thưởng của tài khoản", "lịch sử", "số dư", "thời hạn", "mức cộng", "mức trừ", "số", "phần", "thông tin"],
+    ["Đổi điểm thành voucher {} như thế nào?", "bắp", "nước", "vé", "sinh nhật", "combo", "giảm giá", "thành viên", "cuối tuần"],
+    ["Tài khoản còn {} điểm thì đổi được gì?", "50", "100", "150", "200", "250", "300", "400", "500"],
+    ["Hạng thành viên {} có ưu đãi gì?", "mới", "bạc", "vàng", "bạch kim", "VIP", "thường", "cao nhất", "hiện tại"],
+    ["Mã ưu đãi {} dùng được đến khi nào?", "sinh nhật", "thành viên", "cuối tuần", "đổi điểm", "được tặng", "trong ví", "đầu tháng", "giảm giá"],
+    ["Sao chưa được cộng điểm sau khi {}?", "mua vé", "xem phim", "đặt ở quầy", "mua online", "dùng voucher", "mua combo", "mua bằng QR", "đặt hai vé"],
+    ["Có chương trình {} nào cho thành viên không?", "tích điểm", "đổi quà", "khuyến mãi", "ưu đãi sinh nhật", "tặng voucher", "nâng hạng", "thưởng điểm", "ưu đãi vé"]
+  ],
+  "payment": [
+    ["Rạp có chấp nhận thanh toán bằng {} không?", "MoMo", "VNPay", "thẻ Visa", "tiền mặt", "QR", "thẻ ATM", "ví điện tử", "thẻ tín dụng"],
+    ["Mình trả tiền bằng {} thì thao tác thế nào?", "MoMo", "VNPay", "thẻ Visa", "tiền mặt", "QR", "thẻ ATM", "ví điện tử", "thẻ tín dụng"],
+    ["Đã bị trừ tiền qua {} mà đơn vẫn đang chờ", "MoMo", "VNPay", "Visa", "ngân hàng", "QR", "thẻ ATM", "ví điện tử", "thẻ tín dụng"],
+    ["Mã {} để thanh toán lấy ở đâu?", "QR", "giao dịch", "xác nhận", "VNPay", "MoMo", "thanh toán", "đơn hàng", "quét"],
+    ["Không thanh toán được với {} thì làm sao?", "MoMo", "VNPay", "Visa", "thẻ ngân hàng", "QR", "ví điện tử", "thẻ ATM", "thẻ tín dụng"],
+    ["Mình muốn đổi phương thức trả tiền sang {}", "MoMo", "VNPay", "Visa", "tiền mặt", "QR", "thẻ ATM", "ví điện tử", "thẻ tín dụng"],
+    ["Thanh toán đơn {} ở quầy được không?", "mua online", "chưa trả tiền", "vừa tạo", "từ website", "giữ chỗ", "vé đôi", "vừa chọn", "của mình"],
+    ["Giao dịch bằng {} đã thành công chưa?", "MoMo", "VNPay", "Visa", "ngân hàng", "QR", "thẻ ATM", "ví điện tử", "thẻ tín dụng"]
+  ],
+  "cancel": [
+    ["Cách hủy vé {} vừa mua là gì?", "Avatar", "Mai", "Dune", "Coco", "Batman", "Lật Mặt", "Inside Out", "Mưa Đỏ"],
+    ["Không đi được vào {} thì có đổi vé được không?", "tối nay", "ngày mai", "thứ bảy", "chủ nhật", "thứ hai", "sáng mai", "chiều nay", "thứ sáu"],
+    ["Muốn hoàn tiền cho {} vé đã trả thì làm thế nào?", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám"],
+    ["Hủy đơn đặt qua {} có mất phí không?", "website", "ứng dụng", "điện thoại", "quầy", "MoMo", "VNPay", "QR", "trình duyệt"],
+    ["Có thể chuyển vé sang {} thay vì bỏ vé không?", "suất sau", "ngày mai", "cuối tuần", "rạp khác", "buổi sáng", "buổi tối", "thứ bảy", "giờ muộn"],
+    ["Tôi đã hủy vé rồi, tiền về {} lúc nào?", "MoMo", "VNPay", "Visa", "ngân hàng", "tài khoản", "thẻ ATM", "ví điện tử", "thẻ tín dụng"],
+    ["Lỡ đặt nhầm {} rồi, cho mình xin hoàn vé", "rạp", "ngày", "giờ", "phim", "ghế", "suất", "số lượng", "định dạng phim"],
+    ["Chính sách trả vé khi {} là gì?", "ốm", "bận đột xuất", "đến trễ", "rạp đổi lịch", "không thể đi", "đặt nhầm", "đơn bị lỗi", "lịch chiếu thay đổi"]
+  ]
+}

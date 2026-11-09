@@ -1,4 +1,5 @@
 import math
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from app import app
@@ -28,6 +29,12 @@ def test_content_profile_outranks_unrelated_popularity(movies):
 
 def test_similar_movie_excludes_seed_and_unbookable(movies):
     assert [m["id"] for m in recommend({"movies": movies, "interactions": [], "movie_id": 2})["movies"]] == [3]
+
+
+def test_similar_movie_with_dense_ollama_vectors(movies):
+    vectors = np.array([[1, 0], [.9, .1], [0, 1]], dtype=np.float32)
+    result = recommend({"movies": movies, "interactions": [], "movie_id": 1}, content=vectors)
+    assert [movie["id"] for movie in result["movies"]] == [2, 3]
 
 def test_collaborative_and_svd_have_finite_bounded_scores(movies):
     events = [{"user_id": 1, "movie_id": 1}, {"user_id": 2, "movie_id": 1},
@@ -72,6 +79,17 @@ def test_invalid_calendar_date(language):
 def test_relative_date_context_distinguishes_explicit_today(language):
     assert language.understand("tối nay", [], [], "2026-10-27")["date_explicit"] is True
     assert language.understand("ở Nguyễn Du", [], [], "2026-10-27")["date_explicit"] is False
+
+
+def test_chat_sentiment_keeps_the_original_comment(language):
+    result = language.understand("Phân tích bình luận: Phim rất hay!", [], [], "2026-11-09")
+    assert result["intent"] == "sentiment" and result["review_text"] == "Phim rất hay!"
+
+
+def test_chat_forecast_resolves_cinema_and_evening(language):
+    result = language.understand("Suất nào dự kiến đông tại Nguyễn Du tối nay?", [],
+                                 [{"id": 1, "name": "Galaxy Nguyễn Du"}], "2026-11-09")
+    assert result["intent"] == "forecast" and result["cinema_id"] == 1 and result["min_hour"] == 18
 
 def test_sparse_demand_prior_is_explicit():
     result = forecast({"history": [], "candidates": [{"movie_id": 1, "date": "2026-10-27", "weekday": 1, "hour": 18}]})

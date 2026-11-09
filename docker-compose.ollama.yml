@@ -1,0 +1,16 @@
+# Use together with docker.yml and docker-compose.ai.yml for local tuned AI.
+services:
+  ai:
+    environment:
+      AI_MODEL_DIR: /models
+      AI_OLLAMA_URL: http://host.docker.internal:11434
+    volumes:
+      - type: bind
+        source: ${CINEMA_AI_BUNDLE_DIR:-./local-ai-tuning/workspace/chatbot-bundle}
+        target: /models
+        read_only: true
+        bind:
+          create_host_path: false
+
+  frontend:
+    command: sh -c "npm install --no-audit --no-fund && npm run build && npm run preview -- --host 0.0.0.0 --port 8080 --strictPort"

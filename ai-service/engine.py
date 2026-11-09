@@ -16,6 +16,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.pipeline import make_pipeline
 
+from ollama_adapter import OllamaClassifier, OllamaUnavailable
+
 
 def normalize(text: str) -> str:
     text = unicodedata.normalize("NFD", text.lower().replace("đ", "d"))
@@ -24,7 +26,11 @@ def normalize(text: str) -> str:
 
 class LanguageModels:
     """Small, explicitly labelled bootstrap corpus; not a production quality claim."""
-    def __init__(self):
+    def __init__(self, bundle=None):
+        self.sentiment_threshold = .55
+        self.intent_threshold = .24
+        self.sentiment_model_name = "tfidf-logistic-regression"
+        self.intent_model_name = "tfidf-logistic-regression"
         with (Path(__file__).parent / "data/sentiment.csv").open(encoding="utf-8") as stream:
             rows = list(csv.DictReader(stream))
         self.sentiment_samples = len(rows)
@@ -43,32 +49,68 @@ class LanguageModels:
             "payment": ["thanh toán bằng gì", "có hỗ trợ momo không", "trả tiền vnpay", "cách thanh toán", "thanh toán thất bại", "tôi muốn trả bằng tiền mặt"],
             "cancel": ["hủy vé thế nào", "hoàn tiền vé", "đổi vé được không", "hủy đơn hàng", "trả lại vé", "chính sách hoàn vé"],
         }
+        self.intent_examples = examples
         texts = [normalize(t) for group in examples.values() for t in group]
         labels = [label for label, group in examples.items() for _ in group]
         self.intent = make_pipeline(
             TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 5)),
             LogisticRegression(C=12, max_iter=600, random_state=7),
         ).fit(texts, labels)
+        self.default_intent = self.intent
+        self.default_sentiment = self.sentiment
+        self.default_sentiment_samples = self.sentiment_samples
+        if bundle:
+            for task in ("sentiment", "intent"):
+                trained = bundle.get(task)
+                if trained is not None:
+                    estimator = trained["estimator"]
+                    model_name = "tuned-tfidf-logistic-regression"
+                    if "ollama" in trained:
+                        estimator = OllamaClassifier(estimator, trained["ollama"])
+                        model_name = estimator.name
+                    setattr(self, task, estimator)
+                    setattr(self, task + "_threshold", trained["threshold"])
+                    setattr(self, task + "_model_name", model_name)
+                    if task == "sentiment":
+                        self.sentiment_samples = trained["training_samples"]
 
     def analyze_sentiment(self, reviews: list[dict]) -> dict:
         if not reviews:
-            return {"items": [], "model": "tfidf-logistic-regression", "training_samples": self.sentiment_samples}
-        probabilities = self.sentiment.predict_proba([r["text"] for r in reviews])
-        classes = self.sentiment.classes_
+            return {"items": [], "model": self.sentiment_model_name, "training_samples": self.sentiment_samples}
+        texts = [r["text"] for r in reviews]
+        estimator, threshold = self.sentiment, self.sentiment_threshold
+        name, samples = self.sentiment_model_name, self.sentiment_samples
+        try:
+            probabilities = estimator.predict_proba(texts)
+        except OllamaUnavailable:
+            estimator, threshold = self.default_sentiment, .55
+            name, samples = "tfidf-logistic-regression-fallback", self.default_sentiment_samples
+            probabilities = estimator.predict_proba(texts)
+        classes = estimator.classes_
         return {
             "items": [{"id": r["id"], "label": str(classes[int(np.argmax(p))]),
-                       "confidence": round(float(max(p)), 4), "needs_review": bool(max(p) < .55)}
+                       "confidence": round(float(max(p)), 4), "needs_review": bool(max(p) < threshold)}
                       for r, p in zip(reviews, probabilities)],
-            "model": "tfidf-logistic-regression", "training_samples": self.sentiment_samples,
+            "model": name, "training_samples": samples,
         }
 
     def understand(self, message: str, movies: list[dict], cinemas: list[dict], today: str) -> dict:
         normalized = normalize(message)
-        probabilities = self.intent.predict_proba([normalized])[0]
-        intent = str(self.intent.classes_[int(np.argmax(probabilities))])
-        confidence = float(max(probabilities))
-        if confidence < .24:
-            intent = "unknown"
+        prefix, _, review = message.partition(":")
+        if normalize(prefix) in {"phan tich binh luan", "phan tich cam xuc", "phan tich danh gia"}:
+            return {"intent": "sentiment", "review_text": review.strip(), "intent_model": "chat-command"}
+        if re.search(r"\b(?:du bao|du kien|uoc tinh)\b.*\b(?:suat|dong|lap day|nhu cau)\b", normalized):
+            intent, confidence, intent_model = "forecast", 1.0, "chat-command"
+        else:
+            estimator, threshold, intent_model = self.intent, self.intent_threshold, self.intent_model_name
+            text = message if isinstance(estimator, OllamaClassifier) else normalized
+            try:
+                probabilities = estimator.predict_proba([text])[0]
+            except OllamaUnavailable:
+                estimator, threshold, intent_model = self.default_intent, .24, "tfidf-logistic-regression-fallback"
+                probabilities = estimator.predict_proba([normalized])[0]
+            confidence = float(max(probabilities))
+            intent = str(estimator.classes_[int(np.argmax(probabilities))]) if confidence >= threshold else "unknown"
         movie_matches = []
         for movie in movies:
             title = normalize(movie["title"])
@@ -96,20 +138,31 @@ class LanguageModels:
             except ValueError:
                 return {"intent": "unknown", "confidence": 0, "error": "Ngày không hợp lệ"}
         hour = re.search(r"\b([01]?\d|2[0-3])\s*(?:h|gio|:)\s*([0-5]\d)?", normalized)
-        return {"intent": intent, "confidence": round(confidence, 4), "date": requested_date,
+        return {"intent": intent, "intent_model": intent_model, "confidence": round(confidence, 4), "date": requested_date,
                 "date_explicit": bool(match or any(term in normalized for term in ["ngay mai", "ngay kia", "hom nay", "toi nay", "dem nay", "sang nay", "chieu nay", "tomorrow", "today"])),
                 "hour": int(hour[1]) if hour else None,
+                "min_hour": 18 if not hour and any(phrase in normalized for phrase in ("toi nay", "dem nay")) else None,
                 "movie_id": movie_matches[0]["id"] if movie_matches else None,
                 "cinema_id": cinema_matches[0]["id"] if cinema_matches else None}
 
 
-def recommend(payload: dict) -> dict:
+def recommend(payload: dict, tuning: dict | None = None, content=None) -> dict:
+    tuning = tuning or {}
+    weights = np.asarray(tuning.get("weights", [.55, .35, .10]), dtype=float)
+    if weights.shape != (3,) or not np.all(np.isfinite(weights)) or np.any(weights < 0) or not np.isclose(weights.sum(), 1):
+        raise ValueError("Recommendation weights must be three nonnegative numbers summing to one")
+    svd_rank = int(tuning.get("svd_rank", 16))
+    if not 1 <= svd_rank <= 64:
+        raise ValueError("SVD rank must be in 1..64")
     movies, events = payload["movies"], payload["interactions"]
     if not movies:
         return {"movies": [], "concessions": [], "mode": "cold_start", "model": "hybrid-tfidf-collaborative-svd"}
     ids = {int(m["id"]): i for i, m in enumerate(movies)}
-    texts = [" ".join(str(m.get(k) or "") for k in ("title", "genres", "director", "cast", "description")) for m in movies]
-    content = TfidfVectorizer(strip_accents="unicode", ngram_range=(1, 2), max_features=12000).fit_transform(texts)
+    if content is None:
+        texts = [" ".join(str(m.get(k) or "") for k in ("title", "genres", "director", "cast", "description")) for m in movies]
+        content = TfidfVectorizer(strip_accents="unicode", ngram_range=(1, 2), max_features=12000).fit_transform(texts)
+    elif content.shape[0] != len(movies):
+        raise ValueError("Content vectors must match the movie catalog")
     target = int(payload.get("user_id") or 0)
     # Cap the dense user-item matrix, retaining the viewer even for a large snapshot.
     users = list(dict.fromkeys(int(e["user_id"]) for e in events if int(e["movie_id"]) in ids))[:1000]
@@ -125,10 +178,11 @@ def recommend(payload: dict) -> dict:
     history = interactions[user_index[target]] if target in user_index else np.zeros(len(movies))
     seed = int(payload.get("movie_id") or 0)
     if seed in ids:
-        content_scores = cosine_similarity(content[ids[seed]], content)[0]
+        index = ids[seed]
+        content_scores = cosine_similarity(content[index:index + 1], content)[0]
     elif history.sum() > 0:
-        profile = content.multiply(history[:, None]).sum(axis=0) / history.sum()
-        content_scores = cosine_similarity(np.asarray(profile), content)[0]
+        profile = np.asarray(content.T @ history).reshape(1, -1) / history.sum()
+        content_scores = cosine_similarity(profile, content)[0]
     if target in user_index and len(users) > 1:
         similarity = cosine_similarity(interactions[user_index[target]:user_index[target]+1], interactions)[0]
         similarity[user_index[target]] = 0
@@ -136,7 +190,7 @@ def recommend(payload: dict) -> dict:
             collaborative = similarity @ interactions / similarity.sum()
         if min(interactions.shape) >= 3:
             # Low-rank user-item reconstruction, blended with neighbour scores.
-            rank = min(16, min(interactions.shape) - 1)
+            rank = min(svd_rank, min(interactions.shape) - 1)
             reducer = TruncatedSVD(n_components=rank, random_state=7)
             factors = reducer.fit_transform(np.log1p(interactions))
             latent = factors[user_index[target]] @ reducer.components_
@@ -145,7 +199,7 @@ def recommend(payload: dict) -> dict:
     def scale(values):
         return values / values.max() if values.size and values.max() > 0 else values
     personalized = bool(history.sum() or seed in ids)
-    scores = .55 * scale(content_scores) + .35 * scale(collaborative) + .10 * scale(popularity) if personalized else scale(popularity)
+    scores = weights[0] * scale(content_scores) + weights[1] * scale(collaborative) + weights[2] * scale(popularity) if personalized else scale(popularity)
     ranked = sorted(range(len(movies)), key=lambda i: (-scores[i], -popularity[i], int(movies[i]["id"])))
     results = []
     for i in ranked:
@@ -166,12 +220,15 @@ def demand_features(row: dict) -> dict:
             "hour": str(row["hour"]), "weekend": int(row["weekday"]) >= 5}
 
 
-def forecast(payload: dict) -> dict:
+def forecast(payload: dict, trained: dict | None = None) -> dict:
     history, candidates = payload["history"], payload["candidates"]
     # Sold/capacity is an occupancy target, not raw sales favouring large halls.
     y = np.array([min(1., max(0., float(r["sold"]) / max(1, int(r["capacity"])))) for r in history])
     enough = len(history) >= 20 and len(set(np.round(y, 3))) > 1
-    if enough:
+    use_trained = trained is not None and int(payload.get("cinema_id", 0)) == int(trained["cinema_id"])
+    if use_trained:
+        predictions = trained["estimator"].predict([demand_features(r) for r in candidates]) if candidates else []
+    elif enough:
         model = make_pipeline(DictVectorizer(), RandomForestRegressor(n_estimators=60, min_samples_leaf=3, max_depth=8, random_state=7, n_jobs=1))
         model.fit([demand_features(r) for r in history], y)
         predictions = model.predict([demand_features(r) for r in candidates]) if candidates else []
@@ -182,6 +239,7 @@ def forecast(payload: dict) -> dict:
         for candidate in candidates:
             values = [y[i] for i, r in enumerate(history) if int(r["movie_id"]) == int(candidate["movie_id"])]
             predictions.append((sum(values) + 5 * prior) / (len(values) + 5))
-    return {"mode": "random_forest" if enough else "smoothed_prior", "training_samples": len(history),
+    mode = "tuned_random_forest" if use_trained else "random_forest" if enough else "smoothed_prior"
+    return {"mode": mode, "training_samples": trained["training_samples"] if use_trained else len(history),
             "items": [{"movie_id": int(c["movie_id"]), "date": c["date"], "hour": int(c["hour"]),
                        "occupancy": round(float(np.clip(p, 0, 1)), 4)} for c, p in zip(candidates, predictions)]}

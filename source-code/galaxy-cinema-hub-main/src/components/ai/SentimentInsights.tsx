@@ -19,7 +19,7 @@ export default function SentimentInsights({ reviews }: { reviews: { id: number; 
     finally { if (current === generation.current) setBusy(false); }
   };
   return <section className="space-y-3 rounded-xl border bg-card p-4" aria-label="Phân tích cảm xúc đánh giá">
-    <p className="text-xs text-muted-foreground">Mô hình thử nghiệm từ tập câu mẫu nhỏ; cần đối chiếu nội dung gốc khi kiểm duyệt.</p>
+    <p className="text-xs text-muted-foreground">Cần kiểm chứng chất lượng mô hình trên dữ liệu thực tế và đối chiếu nội dung gốc khi kiểm duyệt.</p>
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Cảm xúc từ đánh giá</h2><p className="text-sm text-muted-foreground">Kết quả tham khảo; quyết định kiểm duyệt vẫn do bạn xác nhận.</p></div>
       <Button variant="outline" onClick={analyze} disabled={busy || !reviews.length}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Phân tích trang hiện tại</Button></div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

@@ -42,7 +42,7 @@ export default function CinemaAssistant() {
         <section role="dialog" aria-label="Trợ lý điện ảnh" className="flex h-[min(34rem,80vh)] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl">
           <header className="flex items-center justify-between border-b p-4"><h2 className="font-semibold">Trợ lý điện ảnh</h2><Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Đóng trợ lý"><X className="h-4 w-4" /></Button></header>
           <div className="flex-1 space-y-4 overflow-y-auto p-4" aria-live="polite">
-            {!messages.length && <p className="text-sm text-muted-foreground">Mình giúp bạn tìm phim, lịch chiếu, combo và hướng dẫn đặt vé. Thử hỏi “Lịch chiếu ngày mai”.</p>}
+            {!messages.length && <p className="text-sm text-muted-foreground">Mình có thể gợi ý phim, tra lịch chiếu, dự báo suất đông và phân tích bình luận. Thử “Dự báo suất đông tại Galaxy Nguyễn Du tối nay” hoặc “Phân tích bình luận: Phim hay và diễn xuất tốt”.</p>}
             {messages.map((message, index) => <div key={index} className={`rounded-xl p-3 text-sm ${message.role === "user" ? "ml-6 bg-primary text-primary-foreground" : "mr-3 bg-muted"}`}>
               <p className="whitespace-pre-line">{message.text}</p>
               {message.links?.filter(link => /^\/(movie\/\d+|schedule|movies|cinemas|concessions|profile|promotions|bookings|login)$/.test(link.url)).map((link, i) => (

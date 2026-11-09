@@ -1,0 +1,32 @@
+{
+  "seed": 7,
+  "sentiment": {
+    "grid": {"analyzer": ["word", "char_wb"], "C": [0.5, 2.0, 8.0]},
+    "min_macro_f1": 0.7,
+    "review_precision": 0.8,
+    "min_coverage": 0.2,
+    "min_test_per_label": 5
+  },
+  "intent": {
+    "grid": {"analyzer": ["char_wb", "word"], "C": [1.0, 4.0, 12.0]},
+    "min_macro_f1": 0.7,
+    "review_precision": 0.8,
+    "min_coverage": 0.2,
+    "min_test_per_label": 5
+  },
+  "forecast": {
+    "grid": {"max_depth": [6, 10], "min_samples_leaf": [2, 4], "n_estimators": [60]},
+    "max_mae": 0.25,
+    "min_test_samples": 20
+  },
+  "recommendation": {
+    "grid": {
+      "weights": [[0.55, 0.35, 0.1], [0.7, 0.2, 0.1], [0.3, 0.6, 0.1]],
+      "svd_rank": [8, 16]
+    },
+    "k": 6,
+    "max_users": 100,
+    "min_ndcg": 0.1,
+    "min_test_users": 10
+  }
+}

@@ -9,7 +9,7 @@ SET NAMES utf8mb4;
 -- ============================================
 -- 1. ROLES & MEMBERSHIPS
 -- ============================================
--INSERT INTO roles (id, name, code, display_name, description, base_role, is_system, is_active) VALUES
+INSERT INTO roles (id, name, code, display_name, description, base_role, is_system, is_active) VALUES
 (1, 'Guest', 'SYSTEM_GUEST', 'Khách vãng lai', 'Khách vãng lai chưa đăng nhập, chỉ xem phim, lịch chiếu và thông tin công khai', 'guest', 1, 1),
 (2, 'Member', 'SYSTEM_MEMBER', 'Thành viên', 'Khách hàng có tài khoản thành viên, đặt vé trực tuyến, tích điểm và nhận ưu đãi', 'member', 1, 1),
 (3, 'Staff', 'SYSTEM_STAFF', 'Nhân viên quầy', 'Nhân viên vận hành tại cụm rạp: bán vé tại quầy, quét vé và quản lý bắp nước', 'staff', 1, 1),
