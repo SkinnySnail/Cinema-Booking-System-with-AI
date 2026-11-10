@@ -35,6 +35,8 @@ class SystemConfigController extends BaseController {
             if (!$data || !is_array($data)) {
                 Response::error('Invalid settings payload provided', 400);
             }
+            $errors=ChatSchedulePolicy::validationErrors($data);
+            if ($errors) Response::validationError($errors);
 
             // Map frontend camelCase to snake_case if necessary, or just save them directly
             // The frontend should send exactly the keys matching DB or we map them.

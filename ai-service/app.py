@@ -54,7 +54,9 @@ class ChatRequest(Payload):
     message: str = Field(min_length=1, max_length=1000)
     movies: list[dict] = Field(default_factory=list, max_length=500)
     cinemas: list[dict] = Field(default_factory=list, max_length=200)
+    genres: list[dict] = Field(default_factory=list, max_length=200)
     today: str
+    schedule_days: int = Field(default=7, ge=1, le=7)
 
 
 class ReviewText(Payload):
@@ -104,7 +106,7 @@ def recommendations(payload: RecommendationRequest):
 
 @app.post("/chat", dependencies=[Depends(internal_access)])
 def chat(payload: ChatRequest):
-    return models.understand(payload.message, payload.movies, payload.cinemas, payload.today)
+    return models.understand(payload.message, payload.movies, payload.cinemas, payload.today, payload.genres, payload.schedule_days)
 
 
 @app.post("/sentiment", dependencies=[Depends(internal_access)])

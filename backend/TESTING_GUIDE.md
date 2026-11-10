@@ -119,7 +119,6 @@ $password = 'your_app_password';
 
 3. **Hoặc dùng service**:
    - SendGrid
-   - AWS SES
    - Mailgun
    - Postmark
 

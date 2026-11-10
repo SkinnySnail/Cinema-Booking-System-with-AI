@@ -37,6 +37,8 @@ const AdminSettings: React.FC = () => {
   const [config, setConfig] = useState<SystemConfig>(systemConfig);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [chatScheduleDays, setChatScheduleDays] = useState(7);
+  const [chatShowtimesPerDay, setChatShowtimesPerDay] = useState(8);
 
   // Membership tiers from DB (ids are needed for PUT)
   const [dbTiers, setDbTiers] = useState<any[]>([]);
@@ -73,6 +75,8 @@ const AdminSettings: React.FC = () => {
       );
       if (res.success && res.data) {
         const dbConfig = res.data;
+        setChatScheduleDays(Number(dbConfig.ai_chat_schedule_days ?? 7));
+        setChatShowtimesPerDay(Number(dbConfig.ai_chat_showtimes_per_day ?? 8));
         const mappedConfig: Partial<SystemConfig> = {};
         if (dbConfig.curfew_u13) mappedConfig.curfewTimeU13 = dbConfig.curfew_u13.substring(0, 5);
         if (dbConfig.curfew_u16) mappedConfig.curfewTimeU16 = dbConfig.curfew_u16.substring(0, 5);
@@ -117,6 +121,10 @@ const AdminSettings: React.FC = () => {
   const handleSave = async () => {
     try {
       setSaving(true);
+      if (!Number.isInteger(chatScheduleDays) || chatScheduleDays < 1 || chatScheduleDays > 7 ||
+          !Number.isInteger(chatShowtimesPerDay) || chatShowtimesPerDay < 1 || chatShowtimesPerDay > 20) {
+        throw new Error("Chatbot hỗ trợ từ 1 đến 7 ngày và từ 1 đến 20 suất mỗi ngày.");
+      }
 
       // 1. Save system_configs (giờ giới nghiêm, booking, loyalty rate, vietnamese quota)
       const payload = {
@@ -126,6 +134,8 @@ const AdminSettings: React.FC = () => {
         seat_hold_duration: config.seatHoldDuration * 60,
         cleanup_duration: config.defaultCleanupDuration,
         loyalty_points_rate: config.loyaltyPointsRate,
+        ai_chat_schedule_days: chatScheduleDays,
+        ai_chat_showtimes_per_day: chatShowtimesPerDay,
       };
 
       const settingsRes = await apiCall<{ success: boolean; message: string }>(
@@ -303,6 +313,27 @@ const AdminSettings: React.FC = () => {
                   Khoảng thời gian cần thiết để dọn dẹp giữa các suất chiếu
                 </p>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Tra Cứu Lịch Chiếu Qua Chatbot</CardTitle>
+            <CardDescription>Giới hạn được tính từ ngày khách đặt câu hỏi, theo giờ Việt Nam.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="chatScheduleDays">Số ngày được tra cứu</Label>
+              <Input id="chatScheduleDays" type="number" min={1} max={7} step={1}
+                value={chatScheduleDays} onChange={event => setChatScheduleDays(Number(event.target.value))} />
+              <p className="text-xs text-muted-foreground">Mặc định 7 ngày, gồm hôm nay và 6 ngày tiếp theo. Tối đa 1 tuần.</p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="chatShowtimesPerDay">Số suất hiển thị mỗi ngày</Label>
+              <Input id="chatShowtimesPerDay" type="number" min={1} max={20} step={1}
+                value={chatShowtimesPerDay} onChange={event => setChatShowtimesPerDay(Number(event.target.value))} />
+              <p className="text-xs text-muted-foreground">Từ 1 đến 20 suất. Khi còn kết quả, chatbot dẫn đến trang Lịch chiếu.</p>
             </div>
           </CardContent>
         </Card>

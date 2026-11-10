@@ -525,7 +525,9 @@ INSERT INTO system_configs (config_key, config_value, description) VALUES
 ('curfew_u13', '22:00:00', 'Giờ giới nghiêm cho dưới 13 tuổi'),
 ('curfew_u16', '23:00:00', 'Giờ giới nghiêm cho dưới 16 tuổi'),
 ('loyalty_points_rate', '10000', 'Số tiền (VNĐ) = 1 điểm tích lũy'),
-('base_ticket_price', '90000', 'Giá vé cơ bản (VNĐ)');
+('base_ticket_price', '90000', 'Giá vé cơ bản (VNĐ)'),
+('ai_chat_schedule_days', '7', 'Số ngày chatbot được tra cứu, gồm hôm nay; tối đa 7 ngày'),
+('ai_chat_showtimes_per_day', '8', 'Số suất tối đa chatbot hiển thị mỗi ngày, từ 1 đến 20');
 
 -- ============================================
 -- VERIFICATION QUERIES

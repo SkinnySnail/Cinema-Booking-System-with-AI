@@ -46,11 +46,10 @@ Hệ thống được phát triển dựa trên triết lý **Decoupled Architec
 ### 🛠️ Tools & DevOps
 
 ![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
-![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=for-the-badge&logo=amazon-aws&logoColor=white)
 ![Bash](https://img.shields.io/badge/GNU%20Bash-4EAA25?style=for-the-badge&logo=GNU%20Bash&logoColor=white)
 
 - **Containerization:** Docker & Docker Compose
-- **Infrastructure:** AWS Deployment Guide included.
+- **Chạy cục bộ:** Docker Compose và Ollama; `start-chatbot.ps1` mở website cùng chatbot đã tune.
 - **CI/CD:** Bash scripts kiểm tra & tự động hóa (`check_deployment.sh`).
 
 ---

@@ -1,5 +1,17 @@
 # 🎬 Galaxy Cinema - Quick Deployment Reference
 
+## Chạy website cùng chatbot đã tune trên Windows
+
+Từ thư mục gốc repo, nhấp đúp `start-chatbot.cmd` hoặc chạy:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\start-chatbot.ps1
+```
+
+Script khởi động Docker, Ollama, database, backend, AI và frontend, rồi mở [Trợ lý điện ảnh](http://localhost:8081/?chat=1). Cần bundle trong `local-ai-tuning/workspace/chatbot-bundle/`. Xem [hướng dẫn tích hợp AI](docs/AI_INTEGRATION.md) để cấu hình và chia sẻ bundle.
+
+Các bước dưới đây dành cho bộ Docker Compose đóng gói backend/frontend/MySQL.
+
 ## 🚀 Deploy in 3 Steps
 
 ### Step 1: Configure Environment
@@ -166,8 +178,8 @@ docker-compose -f docker-compose.deploy.yml up -d
 
 ## 📚 Documentation
 
-- **Full Guide**: AWS_DEPLOYMENT_GUIDE.md
-- **Review Report**: DEPLOYMENT_REVIEW.md
+- **Local chatbot**: [docs/AI_INTEGRATION.md](docs/AI_INTEGRATION.md)
+- **Docker Compose configuration**: [docker-compose.deploy.yml](docker-compose.deploy.yml)
 - **Validation**: ./check_deployment.sh
 
 ---
@@ -187,4 +199,4 @@ docker-compose -f docker-compose.deploy.yml up -d
 
 ---
 
-**Need Help?** Check AWS_DEPLOYMENT_GUIDE.md for detailed instructions.
+**Need Help?** See [docs/AI_INTEGRATION.md](docs/AI_INTEGRATION.md) for the local AI stack, or the troubleshooting steps above for the packaged Docker stack.

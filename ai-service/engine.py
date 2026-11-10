@@ -94,7 +94,8 @@ class LanguageModels:
             "model": name, "training_samples": samples,
         }
 
-    def understand(self, message: str, movies: list[dict], cinemas: list[dict], today: str) -> dict:
+    def understand(self, message: str, movies: list[dict], cinemas: list[dict], today: str,
+                   genres: list[dict] | None = None, schedule_days: int = 7) -> dict:
         normalized = normalize(message)
         prefix, _, review = message.partition(":")
         if normalize(prefix) in {"phan tich binh luan", "phan tich cam xuc", "phan tich danh gia"}:
@@ -111,11 +112,17 @@ class LanguageModels:
                 probabilities = estimator.predict_proba([normalized])[0]
             confidence = float(max(probabilities))
             intent = str(estimator.classes_[int(np.argmax(probabilities))]) if confidence >= threshold else "unknown"
+        # Accent folding makes "chiếu" and "chiều" identical. "lịch chiếu MAI"
+        # names the film; it is not the temporal phrase "chiều mai".
+        tomorrow_pattern = r"(?<!lich )\b(?:(?:sang|trua|chieu|toi|dem)\s+(?:ngay\s+)?mai|ngay\s+mai|tomorrow)\b"
+        tomorrow = re.search(tomorrow_pattern, normalized)
+        after_tomorrow = re.search(r"(?<!lich )\b(?:(?:sang|trua|chieu|toi|dem)\s+(?:ngay\s+)?(?:kia|mot)|ngay\s+(?:kia|mot))\b", normalized)
+        relative_today = re.search(r"\b(?:hom nay|today|(?:sang|trua|chieu|toi|dem)\s+nay)\b", normalized)
         movie_matches = []
         for movie in movies:
             title = normalize(movie["title"])
-            # "ngày mai" is a date entity, not automatically the movie "Mai".
-            searchable = normalized.replace("ngay mai", "") if title == "mai" else normalized
+            # Strip only date mentions: "phim MAI tối mai" still names the movie.
+            searchable = re.sub(tomorrow_pattern, " ", normalized) if title == "mai" else normalized
             if title and re.search(r"(?<!\w)" + re.escape(title) + r"(?!\w)", searchable):
                 movie_matches.append(movie)
         movie_matches.sort(key=lambda m: len(m["title"]), reverse=True)
@@ -127,9 +134,9 @@ class LanguageModels:
                 cinema_matches.append(cinema)
         day = date.fromisoformat(today)
         requested_date = today
-        if "ngay kia" in normalized:
+        if after_tomorrow:
             requested_date = (day + timedelta(days=2)).isoformat()
-        elif "ngay mai" in normalized or "tomorrow" in normalized:
+        elif tomorrow:
             requested_date = (day + timedelta(days=1)).isoformat()
         match = re.search(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{4}))?\b", normalized)
         if match:
@@ -137,11 +144,83 @@ class LanguageModels:
                 requested_date = date(int(match[3] or day.year), int(match[2]), int(match[1])).isoformat()
             except ValueError:
                 return {"intent": "unknown", "confidence": 0, "error": "Ngày không hợp lệ"}
+        requested_end = requested_date
+        week = re.search(r"\b(?:(?:trong|ca|mot|1)\s+tuan|tuan nay|(?:7|bay)\s+ngay(?:\s+(?:toi|tiep theo))?)\b", normalized)
+        next_week = re.search(r"(?<!mot )(?<!1 )\btuan\s+(?:sau|toi)\b", normalized)
+        weekend = re.search(r"\bcuoi tuan\b", normalized)
+        length = re.search(r"\b(\d{1,3})\s+ngay\s+(?:toi|tiep theo)\b", normalized)
+        date_matches = list(re.finditer(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{4}))?\b", normalized))
+        range_requested = bool(week or next_week or weekend or length or len(date_matches)>1)
+        try:
+            if len(date_matches)>1:
+                last = date_matches[-1]
+                requested_end = date(int(last[3] or day.year), int(last[2]), int(last[1])).isoformat()
+            elif length:
+                count = int(length[1])
+                if not 1 <= count <= 366:
+                    raise ValueError('Invalid range length')
+                requested_end = (date.fromisoformat(requested_date) + timedelta(days=count-1)).isoformat()
+            elif next_week:
+                start = day + timedelta(days=7-day.weekday())
+                requested_date, requested_end = start.isoformat(), (start + timedelta(days=6)).isoformat()
+            elif weekend:
+                start = day + timedelta(days=5-day.weekday())
+                requested_date, requested_end = start.isoformat(), (start + timedelta(days=1)).isoformat()
+            elif week:
+                requested_end = (date.fromisoformat(requested_date) + timedelta(days=max(1,min(7,schedule_days))-1)).isoformat()
+        except ValueError:
+            return {"intent": "unknown", "confidence": 0, "error": "Khoảng ngày không hợp lệ"}
         hour = re.search(r"\b([01]?\d|2[0-3])\s*(?:h|gio|:)\s*([0-5]\d)?", normalized)
+        daypart = re.search(
+            r"(?<!lich )\b(sang|trua|chieu|toi|dem)\s+(?:(?:ngay\s+)?(?:nay|mai|kia|mot)|\d{1,2}/\d{1,2}(?:/\d{4})?)\b"
+            r"|\b(?:ngay\s+(?:mai|kia|mot)|hom nay|today|tomorrow)\s+(?:buoi\s+)?(sang|trua|chieu|toi|dem)\b", normalized)
+        min_hour, max_hour = None, None
+        if daypart and not hour:
+            min_hour, max_hour = {"sang": (0, 12), "trua": (11, 14), "chieu": (12, 18),
+                                  "toi": (18, None), "dem": (18, None)}[daypart[1] or daypart[2]]
+        genre_ids, excluded_genre_ids = [], []
+        for genre in genres or []:
+            name = normalize(genre["name"])
+            aliases = {name}
+            if name == "khoa hoc vien tuong":
+                aliases.update({"vien tuong", "sci-fi", "sci fi"})
+            if name == "tinh cam":
+                aliases.add("lang man")
+            for alias in sorted(aliases, key=len, reverse=True):
+                found = re.search(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", normalized)
+                if not found:
+                    continue
+                prefix = normalized[:found.start()]
+                # Accent folding makes the genre "Hài" identical to the quantity "hai".
+                if alias == "hai" and not re.search(r"\b(?:phim|the loai|thich|xem|chon)\s+$", prefix):
+                    continue
+                excluded = re.search(r"\b(?:khong|dung|tranh)(?:\s+\w+){0,4}\s+$", prefix)
+                (excluded_genre_ids if excluded else genre_ids).append(int(genre["id"]))
+                break
+        audience_match = re.search(r"\b(?:cap doi|hen ho|date night|di (?:xem phim )?voi (?:nguoi yeu|ban gai|ban trai))\b", normalized)
+        audience = "couple" if audience_match and not re.search(
+            r"\b(?:khong|chang)(?:\s+\w+){0,3}\s+$", normalized[:audience_match.start()]) else None
+        preferred_genre_ids = [int(genre["id"]) for genre in genres or []
+                               if audience == "couple" and normalize(genre["name"]) in {"tinh cam", "hai"}
+                               and int(genre["id"]) not in excluded_genre_ids]
+        recommend_requested = audience == "couple" or intent == "recommend" or bool(re.search(
+            r"\b(?:goi y|nen xem|nen chon|tu van phim|recommend)\b", normalized))
+        schedule_requested = bool(re.search(r"\b(?:lich chieu|suat|luc may|may gio)\b", normalized))
+        date_explicit = bool(match or tomorrow or after_tomorrow or relative_today or range_requested)
+        # A classifier supplies one label. Preserve explicit scheduling constraints when
+        # a recommendation shares the same question, regardless of the winning label.
+        schedule_requested = schedule_requested or (recommend_requested and (date_explicit or bool(hour)))
+        reset_movie_context = not movie_matches and (recommend_requested or (range_requested and schedule_requested) or bool(re.search(
+            r"\b(?:con suat nao|co phim nao|phim gi|phim nao|lich chieu nao)\b", normalized)))
         return {"intent": intent, "intent_model": intent_model, "confidence": round(confidence, 4), "date": requested_date,
-                "date_explicit": bool(match or any(term in normalized for term in ["ngay mai", "ngay kia", "hom nay", "toi nay", "dem nay", "sang nay", "chieu nay", "tomorrow", "today"])),
+                "date_explicit": date_explicit, "schedule_requested": schedule_requested,
+                "date_from": requested_date, "date_to": requested_end, "range_requested": range_requested,
+                "recommend_requested": recommend_requested, "genre_ids": genre_ids,
+                "excluded_genre_ids": excluded_genre_ids,
+                "audience": audience, "preferred_genre_ids": preferred_genre_ids,
+                "reset_movie_context": reset_movie_context,
                 "hour": int(hour[1]) if hour else None,
-                "min_hour": 18 if not hour and any(phrase in normalized for phrase in ("toi nay", "dem nay")) else None,
+                "min_hour": min_hour, "max_hour": max_hour,
                 "movie_id": movie_matches[0]["id"] if movie_matches else None,
                 "cinema_id": cinema_matches[0]["id"] if cinema_matches else None}
 

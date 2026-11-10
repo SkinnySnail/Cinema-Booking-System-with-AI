@@ -18,6 +18,10 @@ class AIData {
         return $this->db->query("SELECT id,name,address FROM cinemas WHERE LOWER(status)='active' ORDER BY name LIMIT 200")->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    public function genres(): array {
+        return $this->db->query('SELECT id,name FROM genres ORDER BY id LIMIT 200')->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     public function profileAge(int $userId): ?int {
         if (!$userId) return null;
         $stmt = $this->db->prepare('SELECT dob FROM user_profiles WHERE user_id=?');

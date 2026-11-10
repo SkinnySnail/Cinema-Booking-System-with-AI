@@ -71,6 +71,35 @@ Không có khóa, Compose dừng với thông báo cấu hình thiếu. Cấu h�
 
 ## Chạy Trợ lý điện ảnh với bản tune Ollama
 
+### Chạy bằng một script trên Windows
+
+Nhấp đúp `start-chatbot.cmd` ở thư mục gốc repo, hoặc chạy từ PowerShell:
+
+~~~powershell
+.\start-chatbot.ps1
+~~~
+
+Nếu PowerShell chặn script theo execution policy, dùng lệnh chỉ áp dụng cho lần chạy này:
+
+~~~powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\start-chatbot.ps1
+~~~
+
+Script kiểm tra bundle đã tune, mở Docker Desktop và Ollama nếu cần, tải encoder còn thiếu, khởi động đủ bốn dịch vụ, làm nóng model và kiểm tra endpoint có dùng bản tune. Khi website sẵn sàng, trình duyệt mở `http://localhost:8081/?chat=1` với cửa sổ Trợ lý điện ảnh hiển thị sẵn. Giữ Docker Desktop và Ollama chạy trong lúc sử dụng. Không cần tự đặt khóa nội bộ: script dùng lại khóa của container AI hoặc tạo khóa mới cho cả backend và AI. Database hiện tại được giữ nguyên.
+
+Các tùy chọn:
+
+~~~powershell
+.\start-chatbot.ps1 -NoBrowser
+.\start-chatbot.ps1 -WebPort 8082 -ApiPort 8002 -DatabasePort 3309
+.\start-chatbot.ps1 -BundleDirectory 'D:\cinema-models\chatbot-bundle'
+.\start-chatbot.ps1 -SeedShowtimes
+~~~
+
+`-SeedShowtimes` thêm lịch chiếu mẫu từ hôm nay đến hết năm bằng script seed chiếu lại, bỏ các khung trùng. Mặc định không thêm dữ liệu. `-NoBuild` bỏ bước build image Docker; frontend vẫn tạo bản build hiện tại khi khởi động container. Lần đầu cần Internet để tải image, thư viện và encoder. Bundle trong `local-ai-tuning/workspace/chatbot-bundle/` phải được gửi riêng khi chia sẻ repo.
+
+### Chạy từng bước
+
 Bật Docker Desktop và Ollama trên Windows. Kiểm tra có qwen3-embedding:4b và qwen3-embedding:0.6b trong ollama list. Chạy các lệnh sau ở thư mục gốc repo. Nếu thư mục chatbot-bundle đã có manifest.json thì dùng bundle hiện có và bắt đầu từ bước đặt biến môi trường.
 
 ~~~powershell
@@ -87,13 +116,48 @@ Mở [Trợ lý điện ảnh ở cổng 8081](http://localhost:8081) sau khi fr
 | Câu hỏi | Luồng xử lý |
 |---|---|
 | “Tối nay rạp Nguyễn Du còn suất nào không?” | Intent 4B nhận câu hỏi, PHP tìm suất tương lai từ 18 giờ trong MySQL. |
+| “Tối nay rạp Nguyễn Du còn suất nào không? Muốn xem phim thể loại hành động nên xem phim nào” | Kết hợp yêu cầu gợi ý và lịch chiếu, lấy thể loại từ danh mục MySQL, lọc đúng rạp/ngày/giờ/thể loại và đề xuất phim có suất phù hợp. Mỗi liên kết ghi rõ phòng chiếu. |
 | “Phân tích bình luận: Phim quá hay, diễn viên tuyệt vời!” | Model 0.6B phân tích văn bản bạn nhập và trả nhãn kèm độ tin cậy. Trang quản lý đánh giá cũng dùng model này. |
 | “Gợi ý phim giống Dune: Part Two” | Model 0.6B tạo embedding danh mục phim và ranker áp dụng tham số đã tune. Khách mới hỏi gợi ý chung nhận danh sách theo độ phổ biến. |
 | “Dự báo suất đông tại Galaxy Nguyễn Du tối nay” | PHP lấy các suất tương lai. AI nạp model đã đánh giá của đúng rạp hoặc ước lượng từ lịch sử vé tại rạp. Khi dữ liệu còn ít, chatbot báo chưa đủ lịch sử. |
 
 JSON của API chat có intent_model và model để xác minh model thực tế của từng lượt. Ví dụ, luồng cảm xúc hiển thị ollama/qwen3-embedding:0.6b+logistic-regression. Khi Ollama gián đoạn hoặc digest không khớp, các chức năng văn bản dùng TF-IDF dự phòng. Bộ gợi ý MovieLens trong bundle dùng cho thử nghiệm cục bộ và đã có báo cáo so với baseline phổ biến.
 
-Dữ liệu seed của repo gồm các suất tháng 2 và tháng 3 năm 2026. Thêm lịch chiếu hiện tại trong màn hình quản trị để chatbot có kết quả mở bán. Để tune dự báo cho một rạp, xuất CSV chỉ chứa lịch sử suất và tổng vé từ MySQL.
+Bộ phân loại đã tune trả một nhãn chính. Lớp xử lý câu hỏi kết hợp bổ sung các yêu cầu lịch chiếu, gợi ý và thể loại mà không thay đổi artifact. API trả thêm `intents`, `genres` và `excluded_genres`. Bộ lọc chấp nhận thể loại trong danh mục, hỗ trợ tiếng Việt có dấu hoặc không dấu và loại trừ như “không thích phim kinh dị”. Nếu không có suất đúng điều kiện, chatbot báo không tìm thấy thay vì gợi ý phim khác thể loại hoặc sai ngày.
+
+Các cụm “cặp đôi”, “hẹn hò”, “đi với người yêu” bổ sung `audience: "couple"` và yêu cầu gợi ý. Nếu chưa chọn thể loại cụ thể, chatbot ưu tiên phim tình cảm/hài đang có suất đúng rạp, ngày và giờ. Đây là giả định về một buổi hẹn nhẹ nhàng, được nói rõ trong câu trả lời; thể loại người dùng chọn hoặc loại trừ vẫn được giữ. Khi không có suất thuộc nhóm ưu tiên, chatbot nêu rõ và đưa các suất khác để hai người cân nhắc. Chatbot chưa xác nhận hai ghế cạnh nhau hoặc ghế đôi còn trống.
+
+Câu hỏi tổng quát mới như “rạp còn suất nào không?” hoặc yêu cầu gợi ý bỏ bộ lọc phim của lượt trước. Câu hỏi tiếp nối như “còn ngày mai?” vẫn giữ phim đã chọn. Vì vậy, câu hỏi có cùng rạp/ngày/giờ không bị giới hạn vào phim cũ chỉ vì được gửi trong cửa sổ chat có ngữ cảnh.
+
+Các cụm “sáng mai”, “trưa mai”, “chiều mai”, “tối mai”, “đêm mai” đều lấy ngày kế tiếp, không khớp nhầm tên phim MAI. Buổi sáng lấy giờ trước 12:00, trưa từ 11:00 đến trước 14:00, chiều từ 12:00 đến trước 18:00, tối/đêm từ 18:00. Nếu nêu giờ cụ thể thì dùng giờ đó. “Phim MAI tối mai” vẫn giữ đúng phim và ngày.
+
+### Giới hạn tra cứu lịch chiếu của chatbot
+
+Trong **Quản trị → Cấu hình hệ thống → Tra Cứu Lịch Chiếu Qua Chatbot**, cấu hình:
+
+| Khóa trong system_configs | Mặc định | Giá trị cho phép |
+|---|---|---|
+| `ai_chat_schedule_days` | 7 | Số nguyên 1–7, gồm ngày hỏi và các ngày tiếp theo |
+| `ai_chat_showtimes_per_day` | 8 | Số nguyên 1–20, giới hạn kết quả hiển thị mỗi ngày |
+
+Ngày được tính theo Asia/Ho_Chi_Minh. Ví dụ hỏi ngày 10/11 thì cửa sổ mặc định là 10–16/11, chỉ lấy suất chưa bắt đầu. Backend tự kiểm tra phạm vi, kể cả khi client gửi ngày trong context. Ngày nằm hoàn toàn ngoài cửa sổ bị từ chối kèm khoảng được phép; khoảng giao một phần được thu hẹp và có thông báo. Context đã hết hạn được đặt lại theo ngày hỏi.
+
+“Cho tôi lịch chiếu trong tuần”, “cả tuần”, “tuần này” và “7 ngày tới” lấy khoảng ngày liên tiếp trong giới hạn cấu hình. “Cuối tuần” lấy thứ Bảy/Chủ nhật; “tuần sau” lấy tuần lịch kế tiếp rồi áp dụng giới hạn. Hỗ trợ khoảng tường minh như “từ 12/11 đến 15/11”. Kết quả được nhóm theo ngày, phim, rạp và giờ/phòng. Khi vượt số suất hiển thị mỗi ngày, chatbot báo còn kết quả và dẫn đến trang Lịch chiếu.
+
+API trả thêm `schedule_window`, `date_range` và `schedule` (các nhóm theo ngày, có `has_more`). Context có thêm `date_to` để giữ khoảng ngày cho câu tiếp nối. Dịch vụ AI chỉ phân tích yêu cầu; quyền quyết định khoảng ngày nằm trong `backend/service/ChatSchedulePolicy.php`.
+
+Database cũ có thể áp dụng `backend/database/migrations/add_chatbot_schedule_settings.sql`; lệnh INSERT IGNORE giữ cấu hình đã được quản trị viên lưu. Database mới lấy giá trị mặc định từ seed. Khi chưa có khóa cấu hình, backend vẫn dùng mặc định 7 ngày/8 suất mỗi ngày.
+
+Dữ liệu seed ban đầu gồm các suất tháng 2 và tháng 3 năm 2026. Để thêm lịch chiếu lại phục vụ demo từ hôm nay đến hết năm, dùng script CLI sau. Lệnh đầu xem trước, lệnh thứ hai ghi dữ liệu. Có thể đặt `--from=2026-11-10 --until=2026-12-31` để chọn khoảng ngày cụ thể.
+
+~~~powershell
+docker exec galaxy_cinema_app php backend/scripts/seed_revival_showtimes.php
+docker exec galaxy_cinema_app php backend/scripts/seed_revival_showtimes.php --apply
+~~~
+
+Script luân phiên phim đã phát hành, bỏ phim phân loại C, chỉ dùng phòng có ghế hoạt động tại rạp đang mở. Các khung giờ là 09:00, 12:30, 16:00 và 19:30; bỏ giờ đã qua, tính thời gian dọn phòng theo cấu hình và đóng cửa lúc 23:00. Script kiểm tra tỷ lệ phim Việt, bỏ khung trùng và giữ nguyên lịch cũ. Các phim được thêm suất chuyển sang Now Showing. Chạy lại trên cùng khoảng ngày không tạo suất trùng. Đây là lịch mẫu cho demo, chưa có vé bán thực tế để huấn luyện dự báo nhu cầu.
+
+Để tune dự báo cho một rạp, xuất CSV chỉ chứa lịch sử suất và tổng vé từ MySQL.
 
 ~~~powershell
 docker exec galaxy_cinema_app sh -c 'export TUNING_DB_DSN="mysql:host=$DB_HOST;dbname=$DB_NAME;charset=utf8mb4" TUNING_DB_USER="$DB_USER" TUNING_DB_PASSWORD="$DB_PASSWORD"; php local-ai-tuning/export_database.php --forecast-only --days=180 --cinema-id=1 --out=local-ai-tuning/workspace/forecast-data-01'

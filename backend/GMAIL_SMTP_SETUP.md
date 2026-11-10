@@ -170,7 +170,6 @@ Email sẽ không được gửi thật, chỉ hiện trong PHP log.
 Đối với hệ thống thật, nên dùng:
 - **SendGrid** (100 emails/day miễn phí)
 - **Mailgun** (5000 emails/month miễn phí)
-- **AWS SES** (62,000 emails/month miễn phí)
 - **Mailjet**, **Postmark**, etc.
 
 ---
