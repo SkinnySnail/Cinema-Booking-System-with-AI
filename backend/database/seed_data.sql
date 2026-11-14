@@ -527,7 +527,12 @@ INSERT INTO system_configs (config_key, config_value, description) VALUES
 ('loyalty_points_rate', '10000', 'Số tiền (VNĐ) = 1 điểm tích lũy'),
 ('base_ticket_price', '90000', 'Giá vé cơ bản (VNĐ)'),
 ('ai_chat_schedule_days', '7', 'Số ngày chatbot được tra cứu, gồm hôm nay; tối đa 7 ngày'),
-('ai_chat_showtimes_per_day', '8', 'Số suất tối đa chatbot hiển thị mỗi ngày, từ 1 đến 20');
+('ai_chat_showtimes_per_day', '8', 'Số suất tối đa chatbot hiển thị mỗi ngày, từ 1 đến 20'),
+('ai_chat_show_reasons', '1', 'Hiện lý do gợi ý phim'),
+('ai_chat_group_by', 'date_movie', 'Nhóm lịch theo ngày và phim hoặc ngày và rạp'),
+('ai_chat_empty_result_policy', 'suggest_alternatives', 'Cách xử lý khi không tìm thấy suất phù hợp'),
+('ai_chat_context_ttl_minutes', '15', 'Số phút giữ ngữ cảnh từ lượt hỏi gần nhất'),
+('ai_chat_ambiguity_policy', 'clarify', 'Hỏi lại khi yêu cầu có nhiều cách hiểu');
 
 -- ============================================
 -- VERIFICATION QUERIES

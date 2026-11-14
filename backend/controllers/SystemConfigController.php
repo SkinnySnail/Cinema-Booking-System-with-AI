@@ -37,6 +37,9 @@ class SystemConfigController extends BaseController {
             }
             $errors=ChatSchedulePolicy::validationErrors($data);
             if ($errors) Response::validationError($errors);
+            if (array_key_exists('ai_chat_show_reasons', $data)) {
+                $data['ai_chat_show_reasons'] = (string)(int)$data['ai_chat_show_reasons'];
+            }
 
             // Map frontend camelCase to snake_case if necessary, or just save them directly
             // The frontend should send exactly the keys matching DB or we map them.

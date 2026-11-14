@@ -119,13 +119,24 @@ class LanguageModels:
         after_tomorrow = re.search(r"(?<!lich )\b(?:(?:sang|trua|chieu|toi|dem)\s+(?:ngay\s+)?(?:kia|mot)|ngay\s+(?:kia|mot))\b", normalized)
         relative_today = re.search(r"\b(?:hom nay|today|(?:sang|trua|chieu|toi|dem)\s+nay)\b", normalized)
         movie_matches = []
+        movie_mentions = []
         for movie in movies:
             title = normalize(movie["title"])
             # Strip only date mentions: "phim MAI tối mai" still names the movie.
-            searchable = re.sub(tomorrow_pattern, " ", normalized) if title == "mai" else normalized
-            if title and re.search(r"(?<!\w)" + re.escape(title) + r"(?!\w)", searchable):
+            searchable = re.sub(tomorrow_pattern, lambda match: " " * len(match[0]), normalized) if title == "mai" else normalized
+            mentions = list(re.finditer(r"(?<!\w)" + re.escape(title) + r"(?!\w)", searchable)) if title else []
+            if mentions:
                 movie_matches.append(movie)
+                movie_mentions.extend((match.start(), match.end(), movie["id"]) for match in mentions)
         movie_matches.sort(key=lambda m: len(m["title"]), reverse=True)
+        # A short title inside a longer title does not count as a second film.
+        movie_candidates = {}
+        outer_start, outer_end = -1, -1
+        for start, end, movie_id in sorted(movie_mentions, key=lambda item: (item[0], -item[1])):
+            if end < outer_end or (end == outer_end and start > outer_start):
+                continue
+            outer_start, outer_end = start, end
+            movie_candidates[movie_id] = None
         cinema_matches = []
         for cinema in cinemas:
             name = normalize(cinema["name"])
@@ -150,6 +161,14 @@ class LanguageModels:
         weekend = re.search(r"\bcuoi tuan\b", normalized)
         length = re.search(r"\b(\d{1,3})\s+ngay\s+(?:toi|tiep theo)\b", normalized)
         date_matches = list(re.finditer(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{4}))?\b", normalized))
+        date_mentions = sorted(
+            [item for item in (tomorrow, after_tomorrow, relative_today) if item] + date_matches,
+            key=lambda item: item.start(),
+        )
+        ambiguous_date = (normalized == "mai" and bool(movie_matches)) or any(
+            re.fullmatch(r"[\s,]*(?:hay|hoac)\s+(?:ngay\s+)?", normalized[left.end():right.start()])
+            for left, right in zip(date_mentions, date_mentions[1:])
+        )
         range_requested = bool(week or next_week or weekend or length or len(date_matches)>1)
         try:
             if len(date_matches)>1:
@@ -219,6 +238,10 @@ class LanguageModels:
                 "excluded_genre_ids": excluded_genre_ids,
                 "audience": audience, "preferred_genre_ids": preferred_genre_ids,
                 "reset_movie_context": reset_movie_context,
+                "movie_candidates": list(movie_candidates),
+                "cinema_candidates": [cinema["id"] for cinema in cinema_matches],
+                "ambiguous_date": ambiguous_date,
+                "ambiguous_mai": normalized == "mai" and bool(movie_matches),
                 "hour": int(hour[1]) if hour else None,
                 "min_hour": min_hour, "max_hour": max_hour,
                 "movie_id": movie_matches[0]["id"] if movie_matches else None,

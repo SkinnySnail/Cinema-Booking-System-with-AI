@@ -73,6 +73,16 @@ def test_tomorrow_is_not_movie_mai(language):
     assert result["movie_id"] is None and result["intent"] == "showtimes"
 
 
+def test_ambiguity_candidates_ignore_nested_titles_and_distinguish_date_choices(language):
+    movies = [{"id": 1, "title": "Dune"}, {"id": 2, "title": "Dune: Part Two"}, {"id": 3, "title": "MAI"}]
+    selected = language.understand("Lịch chiếu Dune: Part Two từ 12/11 đến 14/11", movies, [], "2026-11-10")
+    assert selected["movie_candidates"] == [2] and not selected["ambiguous_date"]
+    choices = language.understand("Lịch chiếu MAI hay Dune: Part Two ngày 12/11 hay ngày 14/11", movies, [], "2026-11-10")
+    assert set(choices["movie_candidates"]) == {2, 3} and choices["ambiguous_date"]
+    assert language.understand("Mai", movies, [], "2026-11-10")["ambiguous_mai"]
+    assert not language.understand("Phim MAI", movies, [], "2026-11-10")["ambiguous_date"]
+
+
 @pytest.mark.parametrize("phrase,min_hour,max_hour", [
     ("Tối mai", 18, None), ("toi mai", 18, None), ("tối ngày mai", 18, None),
     ("ngày mai buổi tối", 18, None), ("Đêm mai", 18, None),

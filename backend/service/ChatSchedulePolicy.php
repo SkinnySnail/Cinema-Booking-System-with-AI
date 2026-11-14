@@ -1,25 +1,72 @@
 <?php
 /** Server-owned rolling schedule window. Incoming chat context cannot expand it. */
 class ChatSchedulePolicy {
+    private const DEFAULTS = [
+        'ai_chat_schedule_days' => 7,
+        'ai_chat_showtimes_per_day' => 8,
+        'ai_chat_show_reasons' => '1',
+        'ai_chat_group_by' => 'date_movie',
+        'ai_chat_empty_result_policy' => 'suggest_alternatives',
+        'ai_chat_context_ttl_minutes' => 15,
+        'ai_chat_ambiguity_policy' => 'clarify',
+    ];
+
     public static function validationErrors(array $settings): array {
         $errors=[];
-        foreach (['ai_chat_schedule_days'=>7,'ai_chat_showtimes_per_day'=>20] as $key=>$max) {
+        foreach (['ai_chat_schedule_days'=>7,'ai_chat_showtimes_per_day'=>20,'ai_chat_context_ttl_minutes'=>120] as $key=>$max) {
             if (!array_key_exists($key,$settings)) continue;
             $value=$settings[$key];
             if ((!is_int($value) && !(is_string($value) && ctype_digit($value))) || (int)$value<1 || (int)$value>$max) {
                 $errors[$key]="Nhập số nguyên từ 1 đến {$max}.";
             }
         }
+        $options = [
+            'ai_chat_show_reasons' => ['0', '1'],
+            'ai_chat_group_by' => ['date_movie', 'date_cinema'],
+            'ai_chat_empty_result_policy' => ['suggest_alternatives', 'report_only'],
+            'ai_chat_ambiguity_policy' => ['clarify', 'first_match'],
+        ];
+        foreach ($options as $key => $allowed) {
+            if (!array_key_exists($key, $settings)) continue;
+            $value = $settings[$key];
+            if ($key === 'ai_chat_show_reasons' && (is_bool($value) || is_int($value))) {
+                $value = (string)(int)$value;
+            }
+            if (!in_array($value, $allowed, true)) $errors[$key] = 'Chọn một giá trị cấu hình hợp lệ.';
+        }
         return $errors;
     }
 
     public static function settings(array $settings): array {
-        $result=['ai_chat_schedule_days'=>7,'ai_chat_showtimes_per_day'=>8];
+        $result=self::DEFAULTS;
         $errors=self::validationErrors($settings);
         foreach ($result as $key=>$default) {
-            if (isset($settings[$key]) && !isset($errors[$key])) $result[$key]=(int)$settings[$key];
+            if (!isset($settings[$key]) || isset($errors[$key])) continue;
+            $result[$key] = is_int($default) ? (int)$settings[$key] : (string)$settings[$key];
+            if ($key === 'ai_chat_show_reasons') $result[$key] = (string)(int)$settings[$key];
         }
         return $result;
+    }
+
+    public static function activeContext(array $context, int $minutes, int $now): array {
+        // Legacy API clients can still submit explicit filters without a timestamp.
+        if (!array_key_exists('updated_at', $context)) return $context;
+        $updatedAt = $context['updated_at'];
+        if (!is_int($updatedAt) || $updatedAt > $now || $updatedAt <= $now - $minutes * 60) return [];
+        return $context;
+    }
+
+    public static function nearbyDates(array $range): array {
+        $dates = [];
+        $windowEnd = self::date($range['window']['to']);
+        for ($day = self::date($range['window']['from']); $day <= $windowEnd; $day = $day->modify('+1 day')) {
+            $iso = $day->format('Y-m-d');
+            if ($iso >= $range['from'] && $iso <= $range['to']) continue;
+            $boundary = $iso < $range['from'] ? $range['from'] : $range['to'];
+            $dates[$iso] = $day->diff(self::date($boundary))->days;
+        }
+        asort($dates, SORT_NUMERIC);
+        return array_keys($dates);
     }
 
     private static function date($value): ?DateTimeImmutable {
@@ -53,23 +100,28 @@ class ChatSchedulePolicy {
             'clipped'=>$clipped,'note'=>$clipped ? 'Yêu cầu đã được giới hạn trong '.$days.' ngày tính từ hôm nay.' : null];
     }
 
-    public static function groupedReply(array $groups,string $from,string $to,string $preference,int $perDay): array {
-        $reply='Lịch chiếu'.$preference.' từ '.self::date($from)->format('d/m/Y').' đến '.self::date($to)->format('d/m/Y').':';
+    public static function groupedReply(array $groups,string $from,string $to,string $preference,int $perDay,string $groupBy='date_movie'): array {
+        $reply = $from === $to ? '' : 'Lịch chiếu'.$preference.' từ '.self::date($from)->format('d/m/Y').' đến '.self::date($to)->format('d/m/Y').':';
         $links=[]; $more=false;
+        $byCinema = $groupBy === 'date_cinema';
         foreach ($groups as $date=>$group) {
-            $reply.="\n\n".self::date($date)->format('d/m').':';
-            $movies=[];
+            if ($from !== $to) $reply.="\n\n".self::date($date)->format('d/m').':';
+            $sections=[];
             foreach ($group['shows'] as $show) {
-                $key=$show['movie_id'].'/'.$show['cinema_name'];
-                $movies[$key]['label']=$show['title'].' · '.$show['cinema_name'];
-                $movies[$key]['slots'][]=date('H:i',strtotime($show['start_time'])).' ('.$show['hall_name'].')';
+                $section = $byCinema ? $show['cinema_name'] : '';
+                $key = $show['movie_id'].'/'.$show['cinema_name'];
+                $sections[$section][$key]['label'] = $byCinema ? $show['title'] : $show['title'].' · '.$show['cinema_name'];
+                $sections[$section][$key]['slots'][] = date('H:i',strtotime($show['start_time'])).' ('.$show['hall_name'].')';
                 $links[(int)$show['movie_id']]=['label'=>$show['title'],'url'=>'/movie/'.(int)$show['movie_id']];
             }
-            if (!$movies) $reply.="\nChưa có suất phù hợp còn mở bán.";
-            foreach ($movies as $movie) $reply.="\n• ".$movie['label'].' — '.implode(', ',$movie['slots']);
+            if (!$sections) $reply.="\nChưa có suất phù hợp còn mở bán.";
+            foreach ($sections as $section => $movies) {
+                if ($section !== '') $reply .= "\n".$section;
+                foreach ($movies as $movie) $reply.="\n• ".$movie['label'].' — '.implode(', ',$movie['slots']);
+            }
             if ($group['has_more']) { $reply.="\nCòn suất khác; mở Lịch chiếu để xem đầy đủ."; $more=true; }
         }
         if ($more) $reply.="\n\nĐang hiển thị tối đa ".$perDay.' suất mỗi ngày.';
-        return ['reply'=>$reply,'links'=>array_values($links)];
+        return ['reply'=>ltrim($reply),'links'=>array_values($links)];
     }
 }

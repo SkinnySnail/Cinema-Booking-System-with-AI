@@ -133,12 +133,17 @@ Các cụm “sáng mai”, “trưa mai”, “chiều mai”, “tối mai”,
 
 ### Giới hạn tra cứu lịch chiếu của chatbot
 
-Trong **Quản trị → Cấu hình hệ thống → Tra Cứu Lịch Chiếu Qua Chatbot**, cấu hình:
+Các tùy chọn nằm trong **Quản trị → Cấu hình hệ thống → Cấu Hình Chatbot**.
 
 | Khóa trong system_configs | Mặc định | Giá trị cho phép |
 |---|---|---|
 | `ai_chat_schedule_days` | 7 | Số nguyên 1–7, gồm ngày hỏi và các ngày tiếp theo |
 | `ai_chat_showtimes_per_day` | 8 | Số nguyên 1–20, giới hạn kết quả hiển thị mỗi ngày |
+| `ai_chat_show_reasons` | `1` | `1` hiện lý do gợi ý phim, `0` ẩn |
+| `ai_chat_group_by` | `date_movie` | `date_movie` nhóm theo ngày và phim, `date_cinema` nhóm theo ngày và rạp |
+| `ai_chat_empty_result_policy` | `suggest_alternatives` | Tìm tối đa 3 suất ở ngày gần nhất, rồi thử rạp khác trong khoảng ngày đã chọn. Chọn `report_only` để chỉ báo kết quả rỗng |
+| `ai_chat_context_ttl_minutes` | 15 | Số nguyên 1–120. Áp dụng cho ngữ cảnh có `updated_at` do API trả về |
+| `ai_chat_ambiguity_policy` | `clarify` | Hỏi lại khi phát hiện nhiều phim, nhiều rạp hoặc lựa chọn ngày. `first_match` dùng cách nhận diện hiện có |
 
 Ngày được tính theo Asia/Ho_Chi_Minh. Ví dụ hỏi ngày 10/11 thì cửa sổ mặc định là 10–16/11, chỉ lấy suất chưa bắt đầu. Backend tự kiểm tra phạm vi, kể cả khi client gửi ngày trong context. Ngày nằm hoàn toàn ngoài cửa sổ bị từ chối kèm khoảng được phép; khoảng giao một phần được thu hẹp và có thông báo. Context đã hết hạn được đặt lại theo ngày hỏi.
 
@@ -147,6 +152,8 @@ Ngày được tính theo Asia/Ho_Chi_Minh. Ví dụ hỏi ngày 10/11 thì cử
 API trả thêm `schedule_window`, `date_range` và `schedule` (các nhóm theo ngày, có `has_more`). Context có thêm `date_to` để giữ khoảng ngày cho câu tiếp nối. Dịch vụ AI chỉ phân tích yêu cầu; quyền quyết định khoảng ngày nằm trong `backend/service/ChatSchedulePolicy.php`.
 
 Database cũ có thể áp dụng `backend/database/migrations/add_chatbot_schedule_settings.sql`; lệnh INSERT IGNORE giữ cấu hình đã được quản trị viên lưu. Database mới lấy giá trị mặc định từ seed. Khi chưa có khóa cấu hình, backend vẫn dùng mặc định 7 ngày/8 suất mỗi ngày.
+
+Các tùy chọn mới dùng mặc định ngay khi nâng cấp. Áp dụng `backend/database/migrations/add_chatbot_output_settings.sql` để thêm các mặc định vào database hiện có hoặc lưu trực tiếp từ Cấu Hình Chatbot. Kết quả thay thế nằm trong `alternatives`, tách khỏi lịch đúng yêu cầu trong `schedule`.
 
 Dữ liệu seed ban đầu gồm các suất tháng 2 và tháng 3 năm 2026. Để thêm lịch chiếu lại phục vụ demo từ hôm nay đến hết năm, dùng script CLI sau. Lệnh đầu xem trước, lệnh thứ hai ghi dữ liệu. Có thể đặt `--from=2026-11-10 --until=2026-12-31` để chọn khoảng ngày cụ thể.
 

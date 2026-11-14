@@ -141,7 +141,7 @@ class AIController extends BaseController {
             'links'=>$links, 'model'=>$result['mode']];
     }
 
-    private function chatShows(string $day,int $movieId,int $cinemaId,array $parsed,array $genreIds,array $excludedGenreIds,array $preferredGenreIds,int $limit): array {
+    private function chatShows(string $day,int $movieId,int $cinemaId,array $parsed,array $genreIds,array $excludedGenreIds,array $preferredGenreIds,int $limit,int $excludedCinemaId=0): array {
         $sql="SELECT s.id,s.movie_id,s.start_time,m.title,c.name AS cinema_name,h.name AS hall_name,
             (SELECT GROUP_CONCAT(mg.genre_id) FROM movie_genres mg WHERE mg.movie_id=m.id) AS genre_ids FROM showtimes s
             JOIN movies m ON m.id=s.movie_id JOIN cinema_halls h ON h.id=s.cinema_hall_id JOIN cinemas c ON c.id=h.cinema_id
@@ -149,6 +149,7 @@ class AIController extends BaseController {
         $params=[$day.' 00:00:00',(new DateTimeImmutable($day))->modify('+1 day')->format('Y-m-d').' 00:00:00'];
         if($movieId){$sql.=' AND m.id=?';$params[]=$movieId;}
         if($cinemaId){$sql.=' AND c.id=?';$params[]=$cinemaId;}
+        if($excludedCinemaId){$sql.=' AND c.id<>?';$params[]=$excludedCinemaId;}
         foreach ([[$genreIds,false],[$excludedGenreIds,true]] as [$filterIds,$exclude]) {
             if (!$filterIds) continue;
             $sql.=' AND '.($exclude ? 'NOT ' : '').'EXISTS (SELECT 1 FROM movie_genres mg WHERE mg.movie_id=m.id AND mg.genre_id IN ('.implode(',',array_fill(0,count($filterIds),'?')).'))';
@@ -167,6 +168,41 @@ class AIController extends BaseController {
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    private function scheduleAlternatives(array $range, int $movieId, int $cinemaId, array $parsed, array $genreIds, array $excludedGenreIds, array $preferredGenreIds, int $limit): array {
+        foreach (ChatSchedulePolicy::nearbyDates($range) as $date) {
+            $shows = $this->chatShows($date, $movieId, $cinemaId, $parsed, $genreIds, $excludedGenreIds, $preferredGenreIds, $limit);
+            if ($shows) return ['changed' => 'date', 'shows' => $shows];
+        }
+        if ($cinemaId) {
+            $lastDate = new DateTimeImmutable($range['to']);
+            for ($day = new DateTimeImmutable($range['from']); $day <= $lastDate; $day = $day->modify('+1 day')) {
+                $shows = $this->chatShows($day->format('Y-m-d'), $movieId, 0, $parsed, $genreIds, $excludedGenreIds, $preferredGenreIds, $limit, $cinemaId);
+                if ($shows) return ['changed' => 'cinema', 'shows' => $shows];
+            }
+        }
+        return [];
+    }
+
+    private function clarification(array $parsed, array $movies, array $cinemas): array {
+        $questions = [];
+        $movieIds = $parsed['movie_candidates'] ?? [];
+        $cinemaIds = $parsed['cinema_candidates'] ?? [];
+        if (count($movieIds) > 1) {
+            $titles = array_intersect_key(array_column($movies, 'title', 'id'), array_flip($movieIds));
+            $questions['movie'] = 'Bạn muốn xem lịch của phim nào trong các phim được nhắc đến? '.implode(', ', array_slice($titles, 0, 4)).'.';
+        }
+        if (count($cinemaIds) > 1) {
+            $names = array_intersect_key(array_column($cinemas, 'name', 'id'), array_flip($cinemaIds));
+            $questions['cinema'] = 'Bạn muốn tra lịch ở rạp nào? '.implode(', ', array_slice($names, 0, 4)).'.';
+        }
+        if (!empty($parsed['ambiguous_date'])) {
+            $questions['date'] = !empty($parsed['ambiguous_mai'])
+                ? 'Bạn muốn tra lịch phim hay hỏi về ngày mai? Hãy nhập “phim MAI” hoặc “ngày mai”.'
+                : 'Bạn muốn xem lịch vào ngày nào? Nếu muốn xem cả khoảng, hãy nhập từ ngày bắt đầu đến ngày kết thúc.';
+        }
+        return $questions;
+    }
+
     public function chat() {
         $uid=$this->viewer(); $input=self::getRequestData();
         $message=is_string($input['message'] ?? null) ? trim($input['message']) : '';
@@ -180,7 +216,8 @@ class AIController extends BaseController {
             Response::success(['reply'=>'Trợ lý tạm thời chưa kết nối được. Bạn có thể tra lịch chiếu và đặt vé tại các mục bên dưới.',
                 'links'=>[['label'=>'Lịch chiếu','url'=>'/schedule'],['label'=>'Danh sách phim','url'=>'/movies']],'ai_available'=>false]);
         }
-        $context=is_array($input['context'] ?? null)?$input['context']:[];
+        $now = time();
+        $context = ChatSchedulePolicy::activeContext(is_array($input['context'] ?? null) ? $input['context'] : [], $chatSettings['ai_chat_context_ttl_minutes'], $now);
         if (!empty($parsed['error'])) Response::success(['reply'=>$parsed['error'].'. Vui lòng nhập lại ngày.','links'=>[],'ai_available'=>true]);
         $movieIds=array_column($movies,'id'); $cinemaIds=array_column($cinemas,'id');
         $movieId=$this->resolveChatMovie($parsed,$context);
@@ -205,13 +242,26 @@ class AIController extends BaseController {
         $model=$parsed['intent_model'] ?? null; $available=true;
         if ($intent==='unknown' && ($movieId || $cinemaId || !empty($parsed['date_explicit']) || isset($parsed['hour']))) $intent='showtimes';
         $scheduleIntent=in_array($intent,['showtimes','booking','forecast'],true);
+        $replyContext = ['movie_id'=>$movieId,'cinema_id'=>$cinemaId,'date'=>$day,'date_to'=>$until,'updated_at'=>$now];
+        if ($chatSettings['ai_chat_ambiguity_policy'] === 'clarify' && ($scheduleIntent || $intent === 'recommend' || !empty($parsed['ambiguous_mai']))) {
+            $questions = $this->clarification($parsed, $movies, $cinemas);
+            if ($questions) {
+                if (isset($questions['movie']) || !empty($parsed['ambiguous_mai'])) $replyContext['movie_id'] = 0;
+                if (isset($questions['cinema'])) $replyContext['cinema_id'] = 0;
+                if (isset($questions['date'])) unset($replyContext['date'], $replyContext['date_to']);
+                Response::success(['reply'=>implode("\n", $questions),'links'=>[],'intent'=>$intent,'ai_available'=>true,
+                    'intent_model'=>$model,'model'=>$model,'clarification_required'=>true,'context'=>$replyContext]);
+            }
+        }
         if ($scheduleIntent && isset($range['error'])) {
             Response::success(['reply'=>$range['error'],'links'=>[['label'=>'Lịch chiếu','url'=>'/schedule']],
                 'intent'=>$intent,'intents'=>[$intent],'ai_available'=>true,'intent_model'=>$model,'model'=>$model,
                 'schedule_window'=>$range['window'],'date_range'=>null,'schedule_error'=>'outside_window_or_invalid_range',
-                'context'=>['movie_id'=>$movieId,'cinema_id'=>$cinemaId,'date'=>$range['window']['from'],'date_to'=>$range['window']['to']]]);
+                'context'=>array_replace($replyContext,['date'=>$range['window']['from'],'date_to'=>$range['window']['to']])]);
         }
         $groups=[];
+        $alternatives=[];
+        $showReasons = $chatSettings['ai_chat_show_reasons'] === '1';
         if ($intent==='sentiment') {
             $result=$this->chatSentiment((string)($parsed['review_text'] ?? ''));
             $reply=$result['reply']; $model=$result['model'] ?? null; $available=$result['ai_available'] ?? true;
@@ -234,40 +284,71 @@ class AIController extends BaseController {
                 $reply=$result['reply']; $links=$result['links'] ?? [];
                 $model=$result['model'] ?? null; $available=$result['ai_available'] ?? true;
             } elseif ($day!==$until) {
-                $result=ChatSchedulePolicy::groupedReply($groups,$day,$until,$preference,$perDay);
+                $result=ChatSchedulePolicy::groupedReply($groups,$day,$until,$preference,$perDay,$chatSettings['ai_chat_group_by']);
                 $reply=$result['reply']; $links=$result['links'];
-                if ($couple) $reply="Nếu muốn buổi hẹn nhẹ nhàng, mình ưu tiên tình cảm/hài khi có suất phù hợp, hoặc giữ thể loại bạn chọn. Các phim khác là lựa chọn thay thế để hai bạn cân nhắc. Chọn ghế cạnh nhau trên sơ đồ ghế; mình chưa kiểm tra ghế trống.\n\n".$reply;
+                if ($couple && $showReasons) $reply="Nếu muốn buổi hẹn nhẹ nhàng, mình ưu tiên tình cảm/hài khi có suất phù hợp, hoặc giữ thể loại bạn chọn. Các phim khác là lựa chọn thay thế để hai bạn cân nhắc. Chọn ghế cạnh nhau trên sơ đồ ghế; mình chưa kiểm tra ghế trống.\n\n".$reply;
                 if($intent==='booking' && !$uid) $reply.=' Vui lòng đăng nhập trước khi chọn ghế và thanh toán.';
             } else {
                 $reply=$shows?'Các suất'.$preference.' còn mở bán ngày '.date('d/m',strtotime($day)).':':'Chưa tìm thấy suất'.$preference.' phù hợp ngày '.date('d/m',strtotime($day)).'. Bạn có thể đổi ngày, thể loại, tên phim hoặc rạp.';
-                if ($combined && $shows) {
+                if ($combined && $shows && $showReasons) {
                     $titles=array_values(array_unique(array_column($shows,'title')));
                     $reply='Với yêu cầu của bạn, có thể chọn '.implode(' hoặc ',$titles).$preference.'. Các suất phù hợp ngày '.date('d/m',strtotime($day)).':';
                 }
                 if ($couple) {
                     $suggestion=$this->coupleShowtimes($shows,$preferredGenreIds,(bool)$genreIds);
                     $shows=$suggestion['shows'];
-                    $reply=$suggestion['reply'];
-                    if ($shows) $reply.=' Các suất ngày '.date('d/m',strtotime($day)).':';
-                    $reply.=' Mở sơ đồ ghế để chọn hai chỗ cạnh nhau; mình chưa kiểm tra ghế trống.';
+                    if ($showReasons) {
+                        $reply=$suggestion['reply'];
+                        if ($shows) $reply.=' Các suất ngày '.date('d/m',strtotime($day)).':';
+                        if ($shows) $reply.=' Mở sơ đồ ghế để kiểm tra hai chỗ cạnh nhau.';
+                    }
                 }
-                foreach($shows as $show) $links[]=['label'=>$show['title'].' · '.$show['cinema_name'].' · '.$show['hall_name'].' · '.date('H:i',strtotime($show['start_time'])),'url'=>'/movie/'.(int)$show['movie_id']];
+                $groups[$day]['shows'] = $shows;
+                if ($shows && $chatSettings['ai_chat_group_by'] === 'date_cinema') {
+                    $formatted = ChatSchedulePolicy::groupedReply($groups, $day, $day, $preference, $perDay, 'date_cinema');
+                    $reply .= "\n\n".$formatted['reply'];
+                    $links = $formatted['links'];
+                } else {
+                    $movieLinks = [];
+                    foreach ($shows as $show) {
+                        $key = $show['movie_id'].'/'.$show['cinema_name'];
+                        $movieLinks[$key]['title'] = $show['title'].' · '.$show['cinema_name'];
+                        $movieLinks[$key]['url'] = '/movie/'.(int)$show['movie_id'];
+                        $movieLinks[$key]['slots'][] = date('H:i',strtotime($show['start_time'])).' ('.$show['hall_name'].')';
+                    }
+                    foreach ($movieLinks as $item) $links[] = ['label'=>$item['title'].' · '.implode(', ', $item['slots']),'url'=>$item['url']];
+                    if ($groups[$day]['has_more']) $reply.=' Đang hiển thị tối đa '.$perDay.' suất. Mở Lịch chiếu để xem đầy đủ.';
+                }
                 if($intent==='booking' && !$uid) $reply.=' Vui lòng đăng nhập trước khi chọn ghế và thanh toán.';
-                if ($groups[$day]['has_more']) $reply.=' Đang hiển thị tối đa '.$perDay.' suất; mở Lịch chiếu để xem đầy đủ.';
+            }
+            if (!$shows && $intent !== 'forecast' && $chatSettings['ai_chat_empty_result_policy'] === 'suggest_alternatives') {
+                $alternatives = $this->scheduleAlternatives($range, $movieId, $cinemaId, $parsed, $genreIds, $excludedGenreIds, $preferredGenreIds, min(3, $perDay));
+                if ($alternatives) {
+                    $reply .= $alternatives['changed'] === 'date' ? "\n\nBạn có thể đổi sang ngày gần nhất có suất phù hợp." : "\n\nBạn có thể xem tại rạp khác trong khoảng ngày đã chọn.";
+                    foreach ($alternatives['shows'] as $show) {
+                        $label = $show['title'].' · '.$show['cinema_name'].' · '.date('d/m H:i', strtotime($show['start_time'])).' ('.$show['hall_name'].')';
+                        $links[] = ['label'=>$label,'url'=>'/movie/'.(int)$show['movie_id']];
+                    }
+                }
             }
             $links[]=['label'=>'Xem toàn bộ lịch chiếu','url'=>'/schedule'];
         } elseif($intent==='recommend') {
             $recommended=$this->recommend($uid,$movieId,6,$cinemaId ?: null,$genreIds,$excludedGenreIds,$preferredGenreIds);
             $reply=$recommended['movies'] ? 'Bạn có thể tham khảo các phim'.$preference.' dưới đây. Mở phim để xem suất chiếu và chọn ghế.' : 'Chưa có phim'.$preference.' phù hợp đang mở bán. Bạn có thể xem lại lịch chiếu sau.';
             $model=$recommended['model']; $available=$recommended['ai_available'];
-            if ($couple) {
+            if ($couple && $showReasons) {
                 if (!$recommended['movies']) $reply='Chưa có phim đúng các điều kiện bạn chọn đang mở bán cho buổi hẹn hò.';
                 elseif ($genreIds) $reply='Cho buổi hẹn hò, dưới đây là các phim đúng thể loại bạn yêu cầu.';
                 elseif ($recommended['preference_applied']) $reply='Nếu hai bạn muốn một buổi hẹn hò nhẹ nhàng, có thể tham khảo các phim tình cảm hoặc hài dưới đây.';
                 else $reply='Chưa có phim tình cảm hoặc hài phù hợp đang mở bán. Dưới đây là các lựa chọn khác để hai bạn cân nhắc theo sở thích chung.';
                 $reply.=' Mở phim để xem lịch và chọn hai chỗ cạnh nhau trên sơ đồ ghế; mình chưa kiểm tra ghế trống.';
             }
-            foreach($recommended['movies'] as $movie) $links[]=['label'=>$movie['title'].' — '.$movie['reason'],'url'=>'/movie/'.(int)$movie['id']];
+            foreach ($recommended['movies'] as $movie) {
+                $reason = 'Có lịch chiếu sắp tới';
+                if ($genreLabel) $reason = 'Khớp thể loại bạn chọn';
+                elseif ($recommended['preference_applied']) $reason = 'Thuộc nhóm tình cảm hoặc hài';
+                $links[] = ['label'=>$movie['title'].($showReasons ? ' — '.$reason : ''),'url'=>'/movie/'.(int)$movie['id']];
+            }
         } elseif($intent==='cinemas') {
             $reply='Các rạp đang hoạt động:';
             foreach(array_slice($cinemas,0,8) as $cinema) $reply.="\n".$cinema['name'].' — '.$cinema['address'];
@@ -298,7 +379,8 @@ class AIController extends BaseController {
             'schedule_window'=>$range['window'],
             'date_range'=>$scheduleIntent ? ['from'=>$day,'to'=>$until,'clipped'=>$range['clipped']] : null,
             'schedule'=>$scheduleIntent && $intent!=='forecast' ? $groups : null,
-            'context'=>['movie_id'=>$movieId,'cinema_id'=>$cinemaId,'date'=>$day,'date_to'=>$until]]);
+            'alternatives'=>$alternatives ?: null,
+            'context'=>$replyContext]);
     }
     public function sentiments() {
         AuthMiddleware::requireManager(); AuthMiddleware::requirePermission('reviews.view_all');

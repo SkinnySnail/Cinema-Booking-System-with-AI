@@ -177,8 +177,25 @@ def test_chat_settings_reject_invalid_values_and_never_allow_more_than_seven_day
             'valid'=>ChatSchedulePolicy::settings(['ai_chat_schedule_days'=>'3','ai_chat_showtimes_per_day'=>12])]);
     """)
     assert all(error.get("ai_chat_schedule_days") for error in result["errors"])
-    assert result["default"] == {"ai_chat_schedule_days": 7, "ai_chat_showtimes_per_day": 8}
-    assert result["valid"] == {"ai_chat_schedule_days": 3, "ai_chat_showtimes_per_day": 12}
+    assert result["default"]["ai_chat_schedule_days"] == 7
+    assert result["default"]["ai_chat_showtimes_per_day"] == 8
+    assert result["valid"]["ai_chat_schedule_days"] == 3
+    assert result["valid"]["ai_chat_showtimes_per_day"] == 12
+
+
+def test_chat_context_expiry_and_alternative_dates_stay_in_window():
+    result = php_run("""
+        require 'backend/service/ChatSchedulePolicy.php';
+        $range=ChatSchedulePolicy::resolve(['date'=>'2026-11-15','date_explicit'=>true],[],'2026-11-10',7);
+        echo json_encode([
+            ChatSchedulePolicy::activeContext(['movie_id'=>1,'updated_at'=>1000],15,1899),
+            ChatSchedulePolicy::activeContext(['movie_id'=>1,'updated_at'=>1000],15,1900),
+            ChatSchedulePolicy::activeContext(['movie_id'=>1],15,1900),
+            ChatSchedulePolicy::nearbyDates($range)
+        ]);
+    """)
+    assert result[:3] == [{"movie_id": 1, "updated_at": 1000}, [], {"movie_id": 1}]
+    assert result[3] == ["2026-11-14", "2026-11-16", "2026-11-13", "2026-11-12", "2026-11-11", "2026-11-10"]
 
 
 def test_weekly_schedule_reply_keeps_all_dates_and_marks_truncation():

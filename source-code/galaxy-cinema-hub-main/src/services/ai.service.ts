@@ -9,7 +9,7 @@ export interface Recommendations {
   concessions: { id: number; name: string; price: number; image_url: string; reason: string }[];
   mode: string; ai_available: boolean;
 }
-export interface ChatContext { movie_id?: number; cinema_id?: number; date?: string; date_to?: string }
+export interface ChatContext { movie_id?: number; cinema_id?: number; date?: string; date_to?: string; updated_at?: number }
 export interface ChatReply {
   reply: string; links: { label: string; url: string }[];
   ai_available: boolean; context?: ChatContext;
