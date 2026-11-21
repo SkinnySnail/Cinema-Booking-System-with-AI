@@ -14,6 +14,7 @@ on:
         required: false
         default: 'false'
 
+# Khxng cho 2 deploy chxy xxng thxi trxn cxng server.
 concurrency:
   group: cd-production
   cancel-in-progress: false
@@ -23,9 +24,8 @@ permissions:
   packages: write
 
 jobs:
-  # Comment co `backtick` va dau: `env`
-  # Comment tiếng Việt: Không chờ cho 2 deploy chạy đồng thời
   # ---------------------------------------------------------------------
+  # 1. Build & push Docker images lxn GitHub Container Registry
   # ---------------------------------------------------------------------
   build:
     name: Build & push images
@@ -95,6 +95,7 @@ jobs:
         cache-to: type=gha,mode=max
 
   # ---------------------------------------------------------------------
+  # 2. Deploy lxn server qua SSH (cxn approve thx cxng)
   # ---------------------------------------------------------------------
   deploy:
     name: Deploy to production
@@ -125,6 +126,8 @@ jobs:
       - name: Deploy via SSH
         run: |
           set -euo pipefail
+          # Bixn xxxc truyxn sang mxy chx qua chxnh lxnh `env` phxa trxxc
+          # script (khxng phx thuxc SendEnv/AcceptEnv trxn sshd).
           ssh deploy-server "env \
             DEPLOY_PATH='${{ secrets.DEPLOY_PATH }}' \
             BACKEND_IMAGE='${{ needs.build.outputs.backend_image }}' \
@@ -145,12 +148,15 @@ jobs:
 
           cd "$DEPLOY_PATH"
 
+          # --- 1. Login GHCR xx pull image ---
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
+          # --- 2. Backup .env trxxc khi ghi ---
           if [ -f .env ]; then
             cp .env ".env.bak.$(date +%Y%m%d%H%M%S)"
           fi
 
+          # --- 3. Ghi .env (gix nguyxn cxc bixn khxng nxm trong danh sxch dxxi) ---
           set_env() {
             key="$1"; value="$2"
             if [ -f .env ]; then
@@ -167,14 +173,17 @@ jobs:
           set_env FRONTEND_IMAGE "$FRONTEND_IMAGE"
           set_env AI_IMAGE "$AI_IMAGE"
 
+          # --- 4. Pull image mxi ---
           docker pull "$BACKEND_IMAGE"
           docker pull "$FRONTEND_IMAGE"
           if [ "$DEPLOY_AI" = "true" ]; then
             docker pull "$AI_IMAGE"
           fi
 
+          # --- 5. Chxy migration / seed dx lixu ---
           if [ "$SKIP_MIGRATIONS" != "true" ]; then
             echo ">> Applying database migrations..."
+            # xxc cxu hxnh DB tx .env trxn server (bixn chxa export sxn).
             DB_NAME_CFG="$(awk -F= '/^MYSQL_DATABASE=/{print $2}' .env | tail -1)"
             DB_PASS_CFG="$(awk -F= '/^MYSQL_ROOT_PASSWORD=/{print $2}' .env | tail -1)"
             docker compose -f docker-compose.deploy.yml exec -T db mysql \
