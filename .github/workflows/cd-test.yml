@@ -2,24 +2,21 @@ name: CD
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      deploy_ai:
-        description: 'Deploy AI service too? (true/false)'
-        required: false
-        default: 'false'
-      skip_migrations:
-        description: 'Skip auto-seed showtime SQL? (true/false)'
-        required: false
-        default: 'false'
-concurrency:
-  group: cd-production
-  cancel-in-progress: false
 permissions:
   contents: read
   packages: write
 jobs:
-  ping:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      backend_image: ${{ steps.meta.outputs.backend }}
+    steps:
+      - name: Image metadata
+        id: meta
+        run: |
+          echo "backend=ghcr.io/x/backend:sha" >> "$GITHUB_OUTPUT"
+  deploy:
+    needs: build
     runs-on: ubuntu-latest
     steps:
-      - run: echo "ping ok"
+      - run: echo "got ${{ needs.build.outputs.backend_image }}"
