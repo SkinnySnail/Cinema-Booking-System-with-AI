@@ -10,6 +10,7 @@ class Database
 
     // Database credentials
     private $host;
+    private $port;
     private $db_name;
     private $username;
     private $password;
@@ -18,13 +19,17 @@ class Database
     private function __construct()
     {
         $this->host = $this->getEnvValue('DB_HOST', 'localhost');
+        $this->port = $this->getEnvValue('DB_PORT', '3306');
         $this->db_name = $this->getEnvValue('DB_NAME', 'galaxy_cinema');
         $this->username = $this->getEnvValue('DB_USERNAME', 'root');
-        $this->password = $this->getEnvValue('DB_PASSWORD', '12345678');
+        $this->password = $this->getEnvValue('DB_PASSWORD', '123456');
         $this->charset = $this->getEnvValue('DB_CHARSET', 'utf8mb4');
 
         try {
-            $dsn = "mysql:host={$this->host};dbname={$this->db_name};charset={$this->charset}";
+            $port = (int) $this->port;
+            // Chỉ thêm port vào DSN khi khác mặc định 3306.
+            $portPart = $port && $port !== 3306 ? ";port={$port}" : '';
+            $dsn = "mysql:host={$this->host}{$portPart};dbname={$this->db_name};charset={$this->charset}";
             $options = [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,

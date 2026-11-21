@@ -99,4 +99,30 @@ class Transaction {
         $random = strtoupper(substr(md5(uniqid((string)$bookingId, true)), 0, 6));
         return $prefix . '-' . date('YmdHis') . '-' . $bookingId . '-' . $random;
     }
+
+    /**
+     * Đổi phương thức thanh toán của giao dịch (VD: user chuyển từ VNPay sang tiền mặt).
+     */
+    public function updatePaymentMethod($transactionId, $method) {
+        $stmt = $this->db->prepare(
+            "UPDATE transactions SET payment_method = :payment_method, updated_at = NOW() WHERE id = :id"
+        );
+        return $stmt->execute([
+            ':payment_method' => $method,
+            ':id' => (int)$transactionId,
+        ]);
+    }
+
+    /**
+     * Ghi lại số tiền khách thực tế đưa (tiền mặt). Mặc định bằng số tiền đơn hàng.
+     */
+    public function updateReceivedAmount($transactionId, $receivedAmount) {
+        $stmt = $this->db->prepare(
+            "UPDATE transactions SET received_amount = :received_amount, updated_at = NOW() WHERE id = :id"
+        );
+        return $stmt->execute([
+            ':received_amount' => (float)$receivedAmount,
+            ':id' => (int)$transactionId,
+        ]);
+    }
 }

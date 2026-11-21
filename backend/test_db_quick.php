@@ -10,7 +10,7 @@ echo "Testing MySQL Connection...\n\n";
 $host = 'localhost';
 $dbname = 'galaxy_cinema';
 $username = 'root';
-$password = '12345678'; // Password hiện tại trong code
+$password = '123456'; // Password hiện tại trong code
 
 try {
     $dsn = "mysql:host=$host;dbname=$dbname;charset=utf8mb4";
@@ -33,7 +33,7 @@ try {
     if (strpos($e->getMessage(), 'Access denied') !== false) {
         echo ">>> Password SAI! Bạn cần:\n";
         echo "1. Đổi password trong Database.php về đúng password của MySQL\n";
-        echo "2. Hoặc đổi password MySQL thành '12345678'\n";
+        echo "2. Hoặc đổi password MySQL thành '123456'\n";
     } elseif (strpos($e->getMessage(), 'Unknown database') !== false) {
         echo ">>> Database 'galaxy_cinema' CHƯA TỒN TẠI!\n";
         echo "Bạn cần chạy: mysql -u root -p < backend/database/schema.sql\n";

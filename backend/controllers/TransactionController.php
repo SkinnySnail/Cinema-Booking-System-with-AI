@@ -233,6 +233,43 @@ class TransactionController extends BaseController
         $this->createPayment('Visa');
     }
 
+    /**
+     * Thanh toán tiền mặt tại quầy.
+     *
+     * Không phụ thuộc cổng thanh toán online: giao dịch ghi nhận thành công
+     * ngay lập tức và booking được confirm (vé -> SOLD, voucher -> USED).
+     */
+    public function createCashPayment()
+    {
+        AuthMiddleware::requirePermission('transactions.process');
+
+        $data = self::getRequestData();
+        $bookingId = $data['booking_id'] ?? null;
+
+        if (!$bookingId) {
+            Response::validationError([
+                'booking_id' => 'Booking id is required',
+            ]);
+        }
+
+        $booking = $this->transactionService->getBookingById((int) $bookingId);
+        if (!$booking) {
+            Response::notFound('Booking not found');
+        }
+
+        $this->authorizeBookingAccess($booking);
+
+        try {
+            $result = $this->transactionService->createCashPaymentForBooking($booking, [
+                'received_amount' => $data['received_amount'] ?? null,
+            ]);
+
+            Response::created($result, 'Cash payment completed');
+        } catch (Exception $e) {
+            Response::error($e->getMessage(), $e->getCode() ?: 400);
+        }
+    }
+
     private function createPayment($gateway)
     {
         AuthMiddleware::requirePermission('transactions.process');

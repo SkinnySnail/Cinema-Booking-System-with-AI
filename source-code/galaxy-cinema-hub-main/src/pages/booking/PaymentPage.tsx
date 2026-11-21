@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CreditCard,
@@ -17,6 +17,7 @@ import {
   Check,
   ChevronRight,
   ShoppingBag,
+  Banknote,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import Header from "@/components/layout/Header";
@@ -415,6 +416,90 @@ const PaymentPage: React.FC = () => {
   }, [showQRModal, qrTimeLeft, currentBookingId, toast]);
 
   // Guard against accidental leave while waiting for payment confirmation.
+  /**
+   * Hoàn tất thanh toán và chuyển tới trang thành công.
+   * Dùng chung cho cổng thanh toán online (VNPay/MoMo/Visa) và tiền mặt.
+   *
+   * `bookingId` được truyền tường minh vì khi gọi ngay sau khi tạo booking,
+   * state `currentBookingId` trong closure có thể còn null (stale closure).
+   */
+  const completeFromGateway = useCallback(async (bookingIdArg?: number | null) => {
+    const bookingId = bookingIdArg ?? currentBookingId;
+    if (!bookingId) {
+      return;
+    }
+    if (paymentHandledRef.current) {
+      return;
+    }
+    paymentHandledRef.current = true;
+
+    toast({
+      title: "Thanh toán thành công",
+      description: "Đã nhận xác nhận thanh toán từ cổng thanh toán.",
+    });
+
+    let ticketCodes: string[] = [];
+    let resolvedBookingCode: string | null = currentBookingCode;
+    try {
+      const ticketRes = await TicketService.getByBooking(String(bookingId));
+      const rawTickets = Array.isArray(ticketRes?.data) ? ticketRes.data : [];
+      ticketCodes = rawTickets
+        .map(
+          (ticket: TicketData) =>
+            ticket?.ticket_code || ticket?.ticketCode || null,
+        )
+        .filter((code: string | null): code is string => Boolean(code));
+    } catch {
+      // Non-blocking: success page can still show booking info without ticket list.
+    }
+
+    if (!resolvedBookingCode) {
+      try {
+        const bookingRes = await BookingService.getById(String(bookingId));
+        const bd = bookingRes?.data as unknown as BookingData;
+        resolvedBookingCode = bd?.booking_code || bd?.bookingCode || null;
+      } catch {
+        // Ignore booking code fetch errors; we still have fallback ticket code.
+      }
+    }
+
+    setShowQRModal(false);
+    navigate("/booking/success", {
+      state: {
+        bookingId,
+        bookingCode: resolvedBookingCode,
+        ticketCode: resolvedBookingCode || ticketCodes[0] || null,
+        ticketCodes,
+        movie,
+        seats: selectedSeats,
+        concessions: (concessions || []).filter(
+          (c: any) => (c.quantity || 0) > 0,
+        ),
+        total: grandTotal,
+        discount: discount + membershipDiscountAmount,
+        promoCode: discount > 0 ? promoCode : null,
+        showtime: selectedShowtime,
+      },
+    });
+    clearBooking();
+    setCurrentBookingId(null);
+    setShowCancelPaymentConfirm(false);
+  }, [
+    currentBookingId,
+    currentBookingCode,
+    toast,
+    navigate,
+    movie,
+    selectedSeats,
+    concessions,
+    grandTotal,
+    discount,
+    membershipDiscountAmount,
+    promoCode,
+    selectedShowtime,
+    clearBooking,
+  ]);
+
   useEffect(() => {
     if (!showQRModal || !currentBookingId || paymentHandledRef.current) {
       return;
@@ -456,69 +541,6 @@ const PaymentPage: React.FC = () => {
     if (!showQRModal || !currentBookingId || paymentHandledRef.current) {
       return;
     }
-
-    const completeFromGateway = async () => {
-      if (paymentHandledRef.current) {
-        return;
-      }
-      paymentHandledRef.current = true;
-
-      toast({
-        title: "Thanh toán thành công",
-        description: "Đã nhận xác nhận thanh toán từ cổng thanh toán.",
-      });
-
-      let ticketCodes: string[] = [];
-      let resolvedBookingCode: string | null = currentBookingCode;
-      try {
-        const ticketRes = await TicketService.getByBooking(
-          String(currentBookingId),
-        );
-        const rawTickets = Array.isArray(ticketRes?.data) ? ticketRes.data : [];
-        ticketCodes = rawTickets
-          .map(
-            (ticket: TicketData) =>
-              ticket?.ticket_code || ticket?.ticketCode || null,
-          )
-          .filter((code: string | null): code is string => Boolean(code));
-      } catch {
-        // Non-blocking: success page can still show booking info without ticket list.
-      }
-
-      if (!resolvedBookingCode) {
-        try {
-          const bookingRes = await BookingService.getById(
-            String(currentBookingId),
-          );
-          const bd = bookingRes?.data as unknown as BookingData;
-          resolvedBookingCode = bd?.booking_code || bd?.bookingCode || null;
-        } catch {
-          // Ignore booking code fetch errors; we still have fallback ticket code.
-        }
-      }
-
-      setShowQRModal(false);
-      navigate("/booking/success", {
-        state: {
-          bookingId: currentBookingId,
-          bookingCode: resolvedBookingCode,
-          ticketCode: resolvedBookingCode || ticketCodes[0] || null,
-          ticketCodes,
-          movie,
-          seats: selectedSeats,
-          concessions: (concessions || []).filter(
-            (c: any) => (c.quantity || 0) > 0,
-          ),
-          total: grandTotal,
-          discount: discount + membershipDiscountAmount,
-          promoCode: discount > 0 ? promoCode : null,
-          showtime: selectedShowtime,
-        },
-      });
-      clearBooking();
-      setCurrentBookingId(null);
-      setShowCancelPaymentConfirm(false);
-    };
 
     const handlePaymentFailed = (msg?: string) => {
       if (paymentHandledRef.current) return;
@@ -581,6 +603,7 @@ const PaymentPage: React.FC = () => {
     showQRModal,
     currentBookingId,
     currentBookingCode,
+    completeFromGateway,
     toast,
     navigate,
     movie,
@@ -872,6 +895,49 @@ const PaymentPage: React.FC = () => {
               "Trình duyệt đã chặn cửa sổ thanh toán. Nhấn 'Mở lại cửa sổ thanh toán' để thử lại.",
           });
         }
+      } else if (method === "cash") {
+        // Thanh toán tiền mặt tại quầy — không cần cổng thanh toán online.
+        // Giao dịch thành công ngay lập tức nên đi thẳng sang trang thành công.
+        const cashResponse = await TransactionService.cashPayment({
+          booking_id: bookingId,
+        });
+
+        if (!cashResponse?.success) {
+          await BookingService.cancel(String(bookingId));
+          setCurrentBookingId(null);
+          toast({
+            title: "Không thể thanh toán tiền mặt",
+            description:
+              cashResponse?.message ||
+              "Hệ thống không ghi nhận được giao dịch. Vui lòng thử lại hoặc liên hệ quầy.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Đóng mọi cửa sổ thanh toán đang mở (nếu user thử VNPay trước đó)
+        if (vnpayPopupRef.current && !vnpayPopupRef.current.closed) {
+          vnpayPopupRef.current.close();
+        }
+        if (visaPopupRef.current && !visaPopupRef.current.closed) {
+          visaPopupRef.current.close();
+        }
+
+        setShowQRModal(false);
+        setIsVnpayMode(false);
+        setIsVisaMode(false);
+        setMomoQrImageUrl(null);
+        setPaymentUrl(null);
+        pauseHoldTimer();
+
+        toast({
+          title: "Thanh toán tiền mặt thành công",
+          description:
+            "Vui lòng xuất vé tại quầy và mang theo mã đơn hàng để nhân viên đối chiếu.",
+        });
+
+        // Đi thẳng sang trang thành công — dùng lại logic hoàn tất của gateway
+        await completeFromGateway(bookingId);
       }
     } catch (error) {
       if (bookingId) {
@@ -1015,6 +1081,16 @@ const PaymentPage: React.FC = () => {
       badge: null,
       color: "bg-purple-600 text-white",
       ringColor: "ring-purple-500/20 border-purple-500",
+    },
+    {
+      value: "cash",
+      label: "Thanh Toán Tiền Mặt",
+      subLabel:
+        "Thanh toán tại quầy vé — không cần cổng thanh toán online, xác nhận tức thì",
+      icon: Banknote,
+      badge: "Tại quầy",
+      color: "bg-emerald-600 text-white",
+      ringColor: "ring-emerald-500/20 border-emerald-500",
     },
   ];
 
@@ -1584,11 +1660,19 @@ const PaymentPage: React.FC = () => {
               {isProcessing ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Đang kết nối cổng thanh toán...</span>
+                  <span>
+                    {paymentMethod === "cash"
+                      ? "Đang xác nhận thanh toán tiền mặt..."
+                      : "Đang kết nối cổng thanh toán..."}
+                  </span>
                 </>
               ) : (
                 <>
-                  <span>Tiến Hành Thanh Toán</span>
+                  <span>
+                    {paymentMethod === "cash"
+                      ? "Xác Nhận Thanh Toán Tiền Mặt"
+                      : "Tiến Hành Thanh Toán"}
+                  </span>
                   <ChevronRight className="w-5 h-5" />
                 </>
               )}

@@ -73,4 +73,22 @@ export class TransactionService {
     static async visaPayment(data: PaymentRequest): Promise<ApiResponse<{ pay_url: string }>> {
         return apiClient.post<{ pay_url: string }>(API_ENDPOINTS.TRANSACTIONS.VISA, data);
     }
+
+    /**
+     * Thanh toán tiền mặt tại quầy — không cần cổng thanh toán online.
+     * Giao dịch thành công ngay và booking được confirm luôn.
+     */
+    static async cashPayment(
+        data: PaymentRequest & { received_amount?: number }
+    ): Promise<
+        ApiResponse<{
+            transaction_code: string;
+            booking_id: number;
+            status: string;
+            gateway: string;
+            amount: number;
+        }>
+    > {
+        return apiClient.post(API_ENDPOINTS.TRANSACTIONS.CASH, data);
+    }
 }

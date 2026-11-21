@@ -228,6 +228,84 @@ class TransactionService
         throw new Exception('Unsupported payment gateway', 400);
     }
 
+    /**
+     * Thanh toán tiền mặt tại quầy.
+     *
+     * Không cần cổng thanh toán online nên hoạt động ổn định ngay cả khi
+     * VNPay/MoMo sandbox bị lỗi (TmnCode bị vô hiệu hoá, mạng chặn, ...).
+     * Giao dịch được ghi nhận thành công ngay và booking được confirm luôn:
+     * vé -> SOLD, voucher -> USED, cộng điểm thành viên.
+     */
+    public function createCashPaymentForBooking($booking, $options = [])
+    {
+        if ($booking['status'] !== 'Pending') {
+            throw new Exception('Booking is not in pending status', 400);
+        }
+
+        $amount = $this->resolveBookingAmount($booking);
+        if ($amount <= 0) {
+            throw new Exception('Invalid booking amount', 400);
+        }
+
+        $existing = $this->transactionModel->getByBooking((int) $booking['id']);
+        if ($existing && $existing['status'] === 'Success') {
+            throw new Exception('Booking already paid', 400);
+        }
+
+        $bookingId = (int) $booking['id'];
+
+        if ($existing) {
+            // Tái sử dụng transaction Pending (VD: user chuyển từ VNPay sang tiền mặt)
+            $this->transactionModel->updateTransactionCode(
+                $existing['transaction_code'],
+                $this->generateCashTransactionCode($bookingId)
+            );
+            $this->transactionModel->updatePaymentMethod($existing['id'], 'Cash');
+            $transaction = $this->transactionModel->getByBooking($bookingId);
+        } else {
+            $this->transactionModel->create($bookingId, 'Cash', $amount);
+            $transaction = $this->transactionModel->getByBooking($bookingId);
+        }
+
+        // Đánh dấu giao dịch thành công rồi confirm booking
+        $this->transactionModel->updateStatus($transaction['transaction_code'], 'Success');
+        $this->bookingModel->confirm($bookingId);
+
+        // Lưu số tiền khách thực trả nếu có (VD: khách trả thừa, cần ghi lại số tiền thực nhận)
+        $received = isset($options['received_amount']) ? (float) $options['received_amount'] : null;
+        if ($received !== null && $received > 0) {
+            $this->transactionModel->updateReceivedAmount($transaction['id'], $received);
+        }
+
+        $transaction = $this->transactionModel->getByBooking($bookingId);
+
+        // Notify frontend in realtime. Push failure must not break the cash payment.
+        try {
+            PusherService::triggerPaymentStatus(
+                $bookingId,
+                $transaction['transaction_code'],
+                'Success',
+                'Cash'
+            );
+        } catch (Exception $e) {
+            error_log('Pusher notify failed for cash payment: ' . $e->getMessage());
+        }
+
+        return [
+            'transaction' => $transaction,
+            'transaction_code' => $transaction['transaction_code'],
+            'booking_id' => $bookingId,
+            'status' => 'Success',
+            'gateway' => 'Cash',
+            'amount' => $amount,
+        ];
+    }
+
+    private function generateCashTransactionCode($bookingId)
+    {
+        return 'CASH-' . date('YmdHis') . '-' . (int)$bookingId . '-' . strtoupper(substr(md5(uniqid((string)$bookingId, true)), 0, 6));
+    }
+
     private function isSuccessStatus($gateway, $status)
     {
         if ($gateway === 'Momo') {

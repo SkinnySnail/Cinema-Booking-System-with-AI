@@ -6,13 +6,15 @@ services:
     ports:
       - "${CINEMA_DB_PORT:-3307}:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: "12345678"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:-123456}"
       MYSQL_DATABASE: "galaxy_cinema"
       TZ: "Asia/Ho_Chi_Minh"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./backend/database/seed_data.sql:/docker-entrypoint-initdb.d/02_seed_data.sql:ro
+      # Chạy tự động đúng 1 lần khi volume còn trống: sinh lịch chiếu theo ngày hiện tại.
+      - ./backend/database/auto_seed_current_showtimes.sql:/docker-entrypoint-initdb.d/03_auto_seed_current_showtimes.sql:ro
     command: --default-time-zone=+07:00 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 
   app:
@@ -29,8 +31,11 @@ services:
       DB_DRIVER: mysql
       DB_NAME: galaxy_cinema
       DB_USER: root
-      DB_PASSWORD: "12345678"
+      DB_PASSWORD: "${MYSQL_ROOT_PASSWORD:-123456}"
       DB_CHARSET: utf8mb4
+      # MySQL trong container nghe ở 3306. Port 3307 chỉ là mapping ra host,
+      # nên KHÔNG được đưa DB_PORT=3307 vào trong container.
+      DB_PORT: "3306"
     ports:
       - "${CINEMA_API_PORT:-8000}:8000"
     depends_on:

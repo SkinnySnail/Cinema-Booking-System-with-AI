@@ -1,19 +1,13 @@
 {
-    "arn@gmail.com": {
-        "code": "471165",
+    "newuser999@gmail.com": {
+        "code": "970446",
         "data": {
-            "email": "arn@gmail.com",
-            "fullName": "NGUYEN HUU TRI",
-            "phone": "0704159759",
-            "dob": "2012-06-02",
-            "password": "password"
+            "email": "newuser999@gmail.com",
+            "fullName": "Test User",
+            "phone": "0912345678",
+            "dob": "1995-05-20",
+            "password": "Test@12345"
         },
-        "expires_at": 1775114971
-    },
-    "tuantai1915@gmail.com": {
-        "type": "reset_password",
-        "code": "289001",
-        "user_id": 7,
-        "expires_at": 1790518075
+        "expires_at": 1795265192
     }
 }

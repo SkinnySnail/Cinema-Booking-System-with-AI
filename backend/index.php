@@ -268,6 +268,7 @@ $router->get('/api/transactions/user/:userId', 'TransactionController@getHistory
 $router->post('/api/transactions/momo', 'TransactionController@createMoMoPayment');
 $router->post('/api/transactions/vnpay', 'TransactionController@createVNPayPayment');
 $router->post('/api/transactions/visa', 'TransactionController@createVisaPayment');
+$router->post('/api/transactions/cash', 'TransactionController@createCashPayment');
 // ============================================
 // TICKET ROUTES
 // ============================================

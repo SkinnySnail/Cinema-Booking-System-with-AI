@@ -394,7 +394,10 @@ class Movie {
             $query = "SELECT s.*, 
                       ch.name as hall_name, 
                       c.name as cinema_name,
-                      c.location as cinema_location
+                      c.address as cinema_location,
+                      c.street as cinema_street,
+                      c.district as cinema_district,
+                      c.city as cinema_city
                       FROM showtimes s
                       INNER JOIN cinema_halls ch ON s.cinema_hall_id = ch.id
                       INNER JOIN cinemas c ON ch.cinema_id = c.id
