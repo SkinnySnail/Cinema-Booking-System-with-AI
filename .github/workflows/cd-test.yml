@@ -1,12 +1,0 @@
-name: CD
-on:
-  push:
-    branches: [main]
-permissions:
-  contents: read
-jobs:
-  # Comment ti\xng Vict: Kh√¥ng ch·o cho 2 deploy
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo hi
