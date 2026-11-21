@@ -1,5 +1,8 @@
 name: CD
 
+# LUU Y: noi dung ben trong `run:` blocks phai la ASCII (khong dung tieng Viet co dau).
+# GitHub Actions parser bao loi "This run likely failed because of a workflow file issue"
+# khi gap ky tu non-ASCII trong script (comment YAML ben ngoai run: thi van duoc).
 on:
   push:
     branches: [main]
@@ -126,8 +129,8 @@ jobs:
       - name: Deploy via SSH
         run: |
           set -euo pipefail
-          # Biến được truyền sang máy chủ qua chính lệnh `env` phía trước
-          # script (không phụ thuộc SendEnv/AcceptEnv trên sshd).
+          # Variables are forwarded to the server through the `env` command
+          # below (no dependency on SendEnv/AcceptEnv in sshd_config).
           ssh deploy-server "env \
             DEPLOY_PATH='${{ secrets.DEPLOY_PATH }}' \
             BACKEND_IMAGE='${{ needs.build.outputs.backend_image }}' \
@@ -148,15 +151,15 @@ jobs:
 
           cd "$DEPLOY_PATH"
 
-          # --- 1. Login GHCR để pull image ---
+          # --- 1. Login GHCR to pull images ---
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
-          # --- 2. Backup .env trước khi ghi ---
+          # --- 2. Backup .env before writing ---
           if [ -f .env ]; then
             cp .env ".env.bak.$(date +%Y%m%d%H%M%S)"
           fi
 
-          # --- 3. Ghi .env (giữ nguyên các biến không nằm trong danh sách dưới) ---
+          # --- 3. Write .env (keep variables that are not in the list below) ---
           set_env() {
             key="$1"; value="$2"
             if [ -f .env ]; then
@@ -173,17 +176,17 @@ jobs:
           set_env FRONTEND_IMAGE "$FRONTEND_IMAGE"
           set_env AI_IMAGE "$AI_IMAGE"
 
-          # --- 4. Pull image mới ---
+          # --- 4. Pull new images ---
           docker pull "$BACKEND_IMAGE"
           docker pull "$FRONTEND_IMAGE"
           if [ "$DEPLOY_AI" = "true" ]; then
             docker pull "$AI_IMAGE"
           fi
 
-          # --- 5. Chạy migration / seed dữ liệu ---
+          # --- 5. Run database migrations / seed ---
           if [ "$SKIP_MIGRATIONS" != "true" ]; then
             echo ">> Applying database migrations..."
-            # Đọc cấu hình DB từ .env trên server (biến chưa export sẵn).
+            # Read DB config from .env on the server (vars are not exported).
             DB_NAME_CFG="$(awk -F= '/^MYSQL_DATABASE=/{print $2}' .env | tail -1)"
             DB_PASS_CFG="$(awk -F= '/^MYSQL_ROOT_PASSWORD=/{print $2}' .env | tail -1)"
             docker compose -f docker-compose.deploy.yml exec -T db mysql \
