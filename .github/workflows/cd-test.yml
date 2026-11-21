@@ -137,4 +137,18 @@ jobs:
 
           echo ">> Deploy completed."
           REMOTE
-
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          set -euo pipefail
+          ssh deploy-server "env DEPLOY_PATH='${{ secrets.DEPLOY_PATH }}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "${DEPLOY_PATH:-/opt/galaxy-cinema}"
+          echo ">> Rolling back to last backup..."
+          if [ -f .env ] && ls .env.bak.* > /dev/null 2>&1; then
+            LATEST=$(ls -t .env.bak.* | head -1)
+            cp "$LATEST" .env
+            echo "Restored $LATEST"
+          fi
+          docker compose -f docker-compose.deploy.yml up -d --remove-orphans --no-build || true
+          REMOTE
