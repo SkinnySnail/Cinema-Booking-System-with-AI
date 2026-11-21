@@ -16,11 +16,59 @@ PHP = os.getenv("PHP_BIN")
 pytestmark = pytest.mark.skipif(not PHP, reason="PHP_BIN not configured")
 
 
+def _php_extension_dir():
+    """Tìm thư mục chứa extension .so của PHP.
+
+    Ưu tiên biến môi trường PHP_EXTENSION_DIR (do CI set), sau đó hỏi chính PHP.
+    """
+    configured = os.getenv("PHP_EXTENSION_DIR")
+    if configured and os.path.isdir(configured):
+        return configured
+    for probe in (["-r", "echo ini_get('extension_dir');"],
+                  ["-i"]):
+        try:
+            out = subprocess.run([PHP] + probe, capture_output=True, text=True,
+                                 timeout=15).stdout
+        except Exception:
+            continue
+        if probe[0] == "-i":
+            for line in out.splitlines():
+                if line.strip().startswith("extension_dir"):
+                    candidate = line.split("=>", 1)[-1].strip()
+                    if candidate and os.path.isdir(candidate):
+                        return candidate
+        else:
+            candidate = out.strip()
+            if candidate and os.path.isdir(candidate):
+                return candidate
+    return None
+
+
+def _php_extension_options():
+    """Dựng option nạp extension cho `php -n`.
+
+    `php -n` bỏ qua php.ini nên extension dạng shared (.so) phải nạp thủ công.
+    Có hai trường hợp:
+      - Extension đã build tĩnh vào binary (docker php:8.2-cli): không cần nạp,
+        và `-d extension=...` sẽ báo warning "Unable to load dynamic library".
+      - Extension nằm dạng .so (shivammathur/setup-php): cần nạp thủ công.
+
+    Vì vậy chỉ nạp extension nào thực sự tồn tại trong extension_dir.
+    """
+    options = []
+    extension_dir = _php_extension_dir()
+    if not extension_dir:
+        return options
+    options += ["-d", f"extension_dir={extension_dir}"]
+    # ctype: ChatSchedulePolicy dùng ctype_digit. curl: PHP client gọi AI service.
+    for ext in ("curl", "ctype"):
+        if os.path.exists(os.path.join(extension_dir, f"{ext}.so")):
+            options += ["-d", f"extension={ext}"]
+    return options
+
+
 def php_run(code, env=None):
-    options = [PHP, "-n"]
-    extension_dir = os.getenv("PHP_EXTENSION_DIR")
-    if extension_dir:
-        options += ["-d", f"extension_dir={extension_dir}", "-d", "extension=curl"]
+    options = [PHP, "-n"] + _php_extension_options()
     result = subprocess.run(options + ["-r", code], env=env, cwd=ROOT,
                             capture_output=True, text=True, encoding="utf-8", timeout=20)
     assert result.returncode == 0, result.stderr

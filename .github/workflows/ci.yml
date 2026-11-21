@@ -133,11 +133,12 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: curl
+          extensions: curl, ctype
           coverage: none
 
       - name: Run tests
         # PHP_BIN được set để test_php_bridge.py chạy thật thay vì skip.
+        # Test tự dò thư mục extension của PHP nên không cần PHP_EXTENSION_DIR.
         env:
           PHP_BIN: php
         run: python -m pytest tests/ -v --tb=short
