@@ -9,10 +9,6 @@ jobs:
   build:
     name: Build & push images
     runs-on: ubuntu-latest
-    outputs:
-      backend_image: ${{ steps.meta.outputs.backend }}
-      frontend_image: ${{ steps.meta.outputs.frontend }}
-      ai_image: ${{ steps.meta.outputs.ai }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
