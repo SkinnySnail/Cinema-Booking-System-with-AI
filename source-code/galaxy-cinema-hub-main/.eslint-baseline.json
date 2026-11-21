@@ -1,0 +1,178 @@
+{
+  "src/App.tsx": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 1
+    }
+  },
+  "src/components/admin/AdminHeroBanner.tsx": {
+    "errors": 2,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 2
+    }
+  },
+  "src/components/admin/AdminLayout.tsx": {
+    "errors": 7,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 7
+    }
+  },
+  "src/components/booking/QuickBookingBar.tsx": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 1
+    }
+  },
+  "src/components/cinema/LocationPickerMap.tsx": {
+    "errors": 6,
+    "rules": {
+      "no-useless-escape": 1,
+      "@typescript-eslint/no-explicit-any": 5
+    }
+  },
+  "src/components/manager/ManagerLayout.tsx": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 1
+    }
+  },
+  "src/components/staff/TicketChecker.tsx": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 1
+    }
+  },
+  "src/components/ui/command.tsx": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-empty-object-type": 1
+    }
+  },
+  "src/components/ui/textarea.tsx": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-empty-object-type": 1
+    }
+  },
+  "src/data/mockData.ts": {
+    "errors": 2,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 2
+    }
+  },
+  "src/hooks/usePermissions.ts": {
+    "errors": 7,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 7
+    }
+  },
+  "src/lib/api-client.ts": {
+    "errors": 9,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 9
+    }
+  },
+  "src/pages/HomePage.tsx": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 1
+    }
+  },
+  "src/pages/PromotionsPage.tsx": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 1
+    }
+  },
+  "src/pages/SearchPage.tsx": {
+    "errors": 2,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 2
+    }
+  },
+  "src/pages/admin/AdminMovies.tsx": {
+    "errors": 5,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 5
+    }
+  },
+  "src/pages/admin/AdminRolePermissions.tsx": {
+    "errors": 8,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 8
+    }
+  },
+  "src/pages/admin/AdminScheduler.tsx": {
+    "errors": 8,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 4,
+      "no-empty": 4
+    }
+  },
+  "src/pages/admin/AdminSettings.tsx": {
+    "errors": 11,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 11
+    }
+  },
+  "src/pages/booking/BookingSuccessPage.tsx": {
+    "errors": 6,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 6
+    }
+  },
+  "src/pages/booking/PaymentPage.tsx": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 1
+    }
+  },
+  "src/pages/manager/ManagerConcessions.tsx": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 1
+    }
+  },
+  "src/pages/manager/ManagerReports.tsx": {
+    "errors": 2,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 2
+    }
+  },
+  "src/services/cinema.service.ts": {
+    "errors": 2,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 2
+    }
+  },
+  "src/services/permissions.ts": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 1
+    }
+  },
+  "src/services/showtime.service.ts": {
+    "errors": 2,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 2
+    }
+  },
+  "src/types/cinema.ts": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 1
+    }
+  },
+  "src/types/permission.ts": {
+    "errors": 2,
+    "rules": {
+      "@typescript-eslint/no-explicit-any": 2
+    }
+  },
+  "tailwind.config.ts": {
+    "errors": 1,
+    "rules": {
+      "@typescript-eslint/no-require-imports": 1
+    }
+  }
+}

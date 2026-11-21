@@ -425,7 +425,7 @@ const RegisterPage: React.FC = () => {
                   type="tel"
                   value={formData.phone}
                   onChange={handleChange}
-                  maxLength="11"
+                  maxLength={11}
                   placeholder="0912345678"
                   className="h-12 pl-10"
                   required

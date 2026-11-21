@@ -23,6 +23,9 @@ services:
       retries: 10
 
   backend:
+    # image: dùng khi CI/CD đã push image lên GHCR (xem BACKEND_IMAGE trong .env).
+    # build:  dùng khi chạy tay, không có image dựng sẵn.
+    image: ${BACKEND_IMAGE:-}
     build:
       context: .
       dockerfile: Dockerfile
@@ -51,6 +54,9 @@ services:
       retries: 10
 
   frontend:
+    # image: dùng khi CI/CD đã push image lên GHCR (xem FRONTEND_IMAGE trong .env).
+    # build:  dùng khi chạy tay, không có image dựng sẵn.
+    image: ${FRONTEND_IMAGE:-}
     build:
       context: ./source-code/galaxy-cinema-hub-main
       dockerfile: Dockerfile

@@ -40,8 +40,12 @@ const TicketChecker: React.FC<TicketCheckerProps> = ({
   const [loading, setLoading] = useState(false);
   const [approving, setApproving] = useState(false);
   const lastAutoCheckedSignalRef = useRef<number>(0);
+  // Lỗi (mã vé sai, hết hạn...) không có `ticket` — nên state dùng kiểu lỏng.
   const [result, setResult] = useState<
-    (CheckTicketResponse & { success: boolean }) | null
+    (Omit<CheckTicketResponse, "ticket"> & {
+      ticket?: TicketDetail;
+      success: boolean;
+    }) | null
   >(null);
 
   const checkTicketByCode = async (code: string) => {

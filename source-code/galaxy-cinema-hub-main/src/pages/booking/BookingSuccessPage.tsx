@@ -30,8 +30,8 @@ const BookingSuccessPage: React.FC = () => {
   const isPosCallback =
     searchParams.get("is_pos") === "1" ||
     searchParams.has("pos") ||
-    user?.role === "Staff" ||
-    user?.role === "Manager";
+    user?.role === "staff" ||
+    user?.role === "manager";
 
   const urlStatus = searchParams.get("status");
   const hasUrlParams =
