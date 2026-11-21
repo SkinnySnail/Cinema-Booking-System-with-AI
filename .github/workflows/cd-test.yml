@@ -23,6 +23,7 @@ permissions:
   packages: write
 
 jobs:
+  # Comment co `backtick` va dau: `env`
   # Comment tiếng Việt: Không chờ cho 2 deploy chạy đồng thời
   # ---------------------------------------------------------------------
   # ---------------------------------------------------------------------
