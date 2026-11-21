@@ -45,8 +45,6 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.backend }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Build & push frontend
         uses: docker/build-push-action@v6
