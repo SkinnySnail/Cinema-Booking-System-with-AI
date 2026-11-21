@@ -4,15 +4,72 @@ on:
     branches: [main]
 permissions:
   contents: read
+  packages: write
 jobs:
-  deploy:
+  build:
+    name: Build & push images
     runs-on: ubuntu-latest
+    outputs:
+      backend_image: ${{ steps.meta.outputs.backend }}
+      frontend_image: ${{ steps.meta.outputs.frontend }}
+      ai_image: ${{ steps.meta.outputs.ai }}
     steps:
-      - name: Deploy via SSH
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
         run: |
           set -euo pipefail
-          ssh deploy-server "env DEPLOY_PATH='${{ secrets.DEPLOY_PATH }}' bash -s" <<'REMOTE'
-          set -euo pipefail
-          cd "${DEPLOY_PATH:-/opt/galaxy-cinema}"
-          echo ">> Deploy completed."
-          REMOTE
+          echo "backend=ghcr.io/${{ github.repository }}/backend:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "frontend=ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "ai=ghcr.io/${{ github.repository }}/ai-service:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.backend }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./source-code/galaxy-cinema-hub-main
+          file: ./source-code/galaxy-cinema-hub-main/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.frontend }}
+          build-args: |
+            VITE_API_URL=${{ vars.VITE_API_URL }}
+            VITE_PUSHER_KEY=${{ vars.VITE_PUSHER_KEY }}
+            VITE_PUSHER_CLUSTER=${{ vars.VITE_PUSHER_CLUSTER }}
+            VITE_MAPTILER_KEY=${{ vars.VITE_MAPTILER_KEY }}
+            VITE_ORS_API_KEY=${{ vars.VITE_ORS_API_KEY }}
+            VITE_ORS_API_KEY_2=${{ vars.VITE_ORS_API_KEY_2 }}
+
+      - name: Build & push AI service
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ai-service
+          file: ./ai-service/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.ai }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
