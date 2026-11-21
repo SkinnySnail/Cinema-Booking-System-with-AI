@@ -8,16 +8,19 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      backend_image: ${{ steps.meta.outputs.backend }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Build & push frontend
+      - name: Image metadata
+        id: meta
+        run: |
+          echo "backend=ghcr.io/x/backend:sha" >> "$GITHUB_OUTPUT"
+      - name: Build & push backend
         uses: docker/build-push-action@v6
         with:
-          context: ./source-code/galaxy-cinema-hub-main
-          file: ./source-code/galaxy-cinema-hub-main/Dockerfile
+          context: .
+          file: ./Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
-          build-args: |
-            VITE_API_URL=${{ vars.VITE_API_URL }}
-            VITE_PUSHER_KEY=${{ vars.VITE_PUSHER_KEY }}
+          tags: ${{ steps.meta.outputs.backend }}
