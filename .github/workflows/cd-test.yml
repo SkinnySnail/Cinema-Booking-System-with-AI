@@ -42,6 +42,26 @@ jobs:
         file: ./Dockerfile
         push: true
         tags: ${{ steps.meta.outputs.backend }}
+    - name: Build & push frontend
+      uses: docker/build-push-action@v6
+      with:
+        build-args: 'VITE_API_URL=${{ vars.VITE_API_URL }}
+
+          VITE_PUSHER_KEY=${{ vars.VITE_PUSHER_KEY }}
+
+          VITE_PUSHER_CLUSTER=${{ vars.VITE_PUSHER_CLUSTER }}
+
+          VITE_MAPTILER_KEY=${{ vars.VITE_MAPTILER_KEY }}
+
+          VITE_ORS_API_KEY=${{ vars.VITE_ORS_API_KEY }}
+
+          VITE_ORS_API_KEY_2=${{ vars.VITE_ORS_API_KEY_2 }}
+
+          '
+        context: ./source-code/galaxy-cinema-hub-main
+        file: ./source-code/galaxy-cinema-hub-main/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.frontend }}
 name: CD
 'on':
   push:
