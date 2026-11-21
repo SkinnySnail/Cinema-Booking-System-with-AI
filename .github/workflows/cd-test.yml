@@ -46,4 +46,95 @@ jobs:
             IdentityFile ~/.ssh/deploy_key
             StrictHostKeyChecking accept-new
           EOF
+      - name: Deploy via SSH
+        run: |
+          set -euo pipefail
+          # Biến được truyền sang máy chủ qua chính lệnh `env` phía trước
+          # script (không phụ thuộc SendEnv/AcceptEnv trên sshd).
+          ssh deploy-server "env \
+            DEPLOY_PATH='${{ secrets.DEPLOY_PATH }}' \
+            BACKEND_IMAGE='${{ needs.build.outputs.backend_image }}' \
+            FRONTEND_IMAGE='${{ needs.build.outputs.frontend_image }}' \
+            AI_IMAGE='${{ needs.build.outputs.ai_image }}' \
+            DEPLOY_AI='${{ github.event.inputs.deploy_ai || 'false' }}' \
+            SKIP_MIGRATIONS='${{ github.event.inputs.skip_migrations || 'false' }}' \
+            GHCR_TOKEN='${{ secrets.GITHUB_TOKEN }}' \
+            GHCR_USER='${{ github.actor }}' \
+            bash -s" <<'REMOTE'
+          set -euo pipefail
+          DEPLOY_PATH="${DEPLOY_PATH:-/opt/galaxy-cinema}"
+          BACKEND_IMAGE="${BACKEND_IMAGE}"
+          FRONTEND_IMAGE="${FRONTEND_IMAGE}"
+          AI_IMAGE="${AI_IMAGE}"
+          DEPLOY_AI="${DEPLOY_AI:-false}"
+          SKIP_MIGRATIONS="${SKIP_MIGRATIONS:-false}"
+
+          cd "$DEPLOY_PATH"
+
+          # --- 1. Login GHCR để pull image ---
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+          # --- 2. Backup .env trước khi ghi ---
+          if [ -f .env ]; then
+            cp .env ".env.bak.$(date +%Y%m%d%H%M%S)"
+          fi
+
+          # --- 3. Ghi .env (giữ nguyên các biến không nằm trong danh sách dưới) ---
+          set_env() {
+            key="$1"; value="$2"
+            if [ -f .env ]; then
+              if grep -q "^${key}=" .env; then
+                sed -i "s|^${key}=.*|${key}=${value}|" .env
+              else
+                printf '\n%s=%s\n' "$key" "$value" >> .env
+              fi
+            else
+              printf '%s=%s\n' "$key" "$value" >> .env
+            fi
+          }
+          set_env BACKEND_IMAGE "$BACKEND_IMAGE"
+          set_env FRONTEND_IMAGE "$FRONTEND_IMAGE"
+          set_env AI_IMAGE "$AI_IMAGE"
+
+          # --- 4. Pull image mới ---
+          docker pull "$BACKEND_IMAGE"
+          docker pull "$FRONTEND_IMAGE"
+          if [ "$DEPLOY_AI" = "true" ]; then
+            docker pull "$AI_IMAGE"
+          fi
+
+          # --- 5. Chạy migration / seed dữ liệu ---
+          if [ "$SKIP_MIGRATIONS" != "true" ]; then
+            echo ">> Applying database migrations..."
+            # Đọc cấu hình DB từ .env trên server (biến chưa export sẵn).
+            DB_NAME_CFG="$(awk -F= '/^MYSQL_DATABASE=/{print $2}' .env | tail -1)"
+            DB_PASS_CFG="$(awk -F= '/^MYSQL_ROOT_PASSWORD=/{print $2}' .env | tail -1)"
+            docker compose -f docker-compose.deploy.yml exec -T db mysql \
+              -uroot -p"${DB_PASS_CFG:-123456}" "${DB_NAME_CFG:-galaxy_cinema}" \
+              < backend/database/auto_seed_current_showtimes.sql
+          fi
+
+          # --- 6. Restart service ---
+          echo ">> Restarting services..."
+          docker compose -f docker-compose.deploy.yml up -d --remove-orphans --no-build
+          docker compose -f docker-compose.deploy.yml ps
+
+          # --- 7. Health check ---
+          echo ">> Waiting for health..."
+          BE_PORT="$(awk -F= '/^BACKEND_PORT=/{print $2}' .env | tail -1)"
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${BE_PORT:-8000}/api/health" > /dev/null; then
+              echo "Backend healthy after ${i}0s"
+              break
+            fi
+            sleep 10
+          done
+          curl -fsS "http://127.0.0.1:${BE_PORT:-8000}/api/health" || {
+            echo "::error::Backend health check failed"
+            docker compose -f docker-compose.deploy.yml logs --tail=100 backend
+            exit 1
+          }
+
+          echo ">> Deploy completed."
+          REMOTE
 
