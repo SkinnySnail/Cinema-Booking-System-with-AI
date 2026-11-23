@@ -262,6 +262,7 @@ $router->get('/api/transactions/booking/:bookingId', 'TransactionController@getB
 $router->post('/api/transactions/momo/verify', 'TransactionController@verifyMomo');
 $router->get('/api/transactions/vnpay/verify', 'TransactionController@verifyVNPay');
 $router->post('/api/transactions/vnpay/verify', 'TransactionController@verifyVNPay');
+$router->get('/api/transactions/vnpay/ipn', 'TransactionController@verifyVNPayIpn'); // VNPay gọi IPN bằng GET
 $router->post('/api/transactions/vnpay/ipn', 'TransactionController@verifyVNPayIpn');
 $router->get('/api/transactions/momo/verify', 'TransactionController@verifyMomo');
 $router->get('/api/transactions/user/:userId', 'TransactionController@getHistory');

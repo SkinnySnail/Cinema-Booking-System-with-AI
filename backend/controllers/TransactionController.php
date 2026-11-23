@@ -175,21 +175,28 @@ class TransactionController extends BaseController
         }
     }
 
-    // IPN endpoint for VNPay (server-to-server callback). This should return plain '00' on success.
+    // IPN endpoint for VNPay (server-to-server callback, sent as GET).
+    // VNPay expects JSON {"RspCode": "...", "Message": "..."}; only vnp_* fields are signed.
     public function verifyVNPayIpn()
     {
-        $data = array_merge($_GET, self::getRequestData());
+        $data = array_filter(
+            array_merge($_GET, (array) self::getRequestData()),
+            function ($key) {
+                return strpos((string) $key, 'vnp_') === 0;
+            },
+            ARRAY_FILTER_USE_KEY
+        );
 
         try {
-            $result = $this->transactionService->processGatewayVerification('VNPay', $data);
-            header('Content-Type: text/plain');
-            echo '00';
-            exit;
+            $result = $this->transactionService->processVNPayIpn($data);
         } catch (Exception $e) {
-            header('Content-Type: text/plain');
-            echo '01';
-            exit;
+            error_log('VNPay IPN error: ' . $e->getMessage());
+            $result = ['RspCode' => '99', 'Message' => 'Unknown error'];
         }
+
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode($result);
+        exit;
     }
 
     public function getHistory($userId)
