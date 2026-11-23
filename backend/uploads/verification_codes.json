@@ -1,13 +1,1 @@
-{
-    "newuser999@gmail.com": {
-        "code": "970446",
-        "data": {
-            "email": "newuser999@gmail.com",
-            "fullName": "Test User",
-            "phone": "0912345678",
-            "dob": "1995-05-20",
-            "password": "Test@12345"
-        },
-        "expires_at": 1795265192
-    }
-}
+[]
