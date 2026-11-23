@@ -91,8 +91,8 @@ SMTP_ENABLED=true          # TRƯỚC ĐÂY là false -> chỉ log, không gửi
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_ENCRYPTION=tls
-SMTP_USERNAME=taiv80527@gmail.com
-SMTP_PASSWORD=oscuepstsovuwehn   # App Password 16 ký tự
+SMTP_USERNAME=<email-gmail-cua-ban>
+SMTP_PASSWORD=<app-password-16-ky-tu>   # Không commit giá trị thật
 ```
 
 Log xác nhận gửi thành công:

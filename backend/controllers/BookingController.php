@@ -83,49 +83,41 @@ class BookingController extends BaseController {
             Response::forbidden('You do not have permission to create booking for this user');
         }
 
+        $policy = new ViewingPolicy($this->db);
+        $maxSeats = $policy->maxSeatsPerBooking();
+        if (count(array_unique(array_map('intval', $seatIds))) > $maxSeats) {
+            Response::validationError([
+                'seat_ids' => "Mỗi đơn chỉ được đặt tối đa {$maxSeats} ghế.",
+            ]);
+        }
+
         try {
-            // Check under 13 and under 16 age limits for late night movies
-            if ($userId) {
-                $stmt = $this->db->prepare("SELECT dob FROM user_profiles WHERE user_id = :uid LIMIT 1");
-                $stmt->execute([':uid' => $userId]);
-                $profile = $stmt->fetch(PDO::FETCH_ASSOC);
-                
-                if ($profile && !empty($profile['dob'])) {
-                    $stmtST = $this->db->prepare("
-                        SELECT s.start_time, m.duration_minutes 
-                        FROM showtimes s 
-                        JOIN movies m ON s.movie_id = m.id 
-                        WHERE s.id = :sid
-                    ");
-                    $stmtST->execute([':sid' => $showtimeId]);
-                    $stCheck = $stmtST->fetch(PDO::FETCH_ASSOC);
-                    
-                    if ($stCheck) {
-                        $startObj = new DateTime($stCheck['start_time']);
-                        $startObj->modify("+{$stCheck['duration_minutes']} minutes");
-                        $endHour = (int)$startObj->format('H');
-                        $endMinute = (int)$startObj->format('i');
-                        
-                        $totalMinsOfDay = $endHour * 60 + $endMinute;
-                        if ($endHour >= 0 && $endHour < 6) {
-                            $totalMinsOfDay += 24 * 60;
-                        }
-                        
-                        $dob = new DateTime($profile['dob']);
-                        $now = new DateTime();
-                        $age = $now->diff($dob)->y;
-                        
-                        $limit22 = 22 * 60;
-                        $limit23 = 23 * 60;
-                        
-                        if ($age < 13 && $totalMinsOfDay > $limit22) {
-                            Response::forbidden('Theo quy định, người dưới 13 tuổi không được phép xem phim có suất chiếu kết thúc sau 22h.');
-                        }
-                        
-                        if ($age < 16 && $totalMinsOfDay > $limit23) {
-                            Response::forbidden('Theo quy định, người dưới 16 tuổi không được phép xem phim có suất chiếu kết thúc sau 23h.');
-                        }
-                    }
+            // Phân loại tuổi của phim + giờ giới nghiêm dưới 13 / dưới 16 tuổi (Luật Điện ảnh 2022)
+            $stmtST = $this->db->prepare("
+                SELECT s.start_time, m.duration_minutes, m.age_rating
+                FROM showtimes s
+                JOIN movies m ON s.movie_id = m.id
+                WHERE s.id = :sid
+            ");
+            $stmtST->execute([':sid' => $showtimeId]);
+            $stCheck = $stmtST->fetch(PDO::FETCH_ASSOC);
+
+            if ($stCheck) {
+                $dob = null;
+                if ($userId) {
+                    $stmt = $this->db->prepare("SELECT dob FROM user_profiles WHERE user_id = :uid LIMIT 1");
+                    $stmt->execute([':uid' => $userId]);
+                    $dob = $stmt->fetchColumn() ?: null;
+                }
+
+                $violation = $policy->viewerViolation(
+                    $dob,
+                    $stCheck['age_rating'],
+                    $stCheck['start_time'],
+                    (int)$stCheck['duration_minutes']
+                );
+                if ($violation !== null) {
+                    Response::forbidden($violation);
                 }
             }
 
@@ -356,6 +348,13 @@ class BookingController extends BaseController {
         $seatIds = $this->extractSeatIds($data);
         $concessions = $data['concessions'] ?? [];
         $userVoucherId = $data['user_voucher_id'] ?? null;
+
+        $maxSeats = (new ViewingPolicy($this->db))->maxSeatsPerBooking();
+        if (count(array_unique(array_map('intval', $seatIds))) > $maxSeats) {
+            Response::validationError([
+                'seat_ids' => "Mỗi đơn chỉ được đặt tối đa {$maxSeats} ghế.",
+            ]);
+        }
 
         try {
             $result = $this->bookingService->updateBooking(

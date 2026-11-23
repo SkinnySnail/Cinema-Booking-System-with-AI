@@ -2,6 +2,8 @@
 /**
  * Booking Model
  */
+require_once __DIR__ . '/../service/PusherService.php';
+
 class Booking {
     private $db;
 
@@ -135,6 +137,8 @@ class Booking {
             } catch (Exception $ex) {
                 error_log('Release seat_holds after booking: ' . $ex->getMessage());
             }
+
+            PusherService::triggerSeatsUpdated($showtimeId, 'booked');
 
             return [
                 'booking_id' => $bookingId,
@@ -769,6 +773,7 @@ class Booking {
             }
 
             $this->db->commit();
+            PusherService::triggerSeatsUpdatedForBooking($this->db, $id, 'cancelled');
             return true;
         } catch (Exception $e) {
             $this->db->rollBack();
@@ -793,6 +798,7 @@ class Booking {
             $stmt2->execute([':booking_id' => $id]);
 
             $this->db->commit();
+            PusherService::triggerSeatsUpdatedForBooking($this->db, $id, 'refunded');
             return true;
         } catch (Exception $e) {
             $this->db->rollBack();
@@ -1074,6 +1080,8 @@ class Booking {
             }
 
             $this->db->commit();
+
+            PusherService::triggerSeatsUpdatedForBooking($this->db, $bookingId, 'booking-updated');
 
             return [
                 'booking_id' => $bookingId,
@@ -1396,6 +1404,7 @@ class Booking {
 
                 $this->db->commit();
                 $count++;
+                PusherService::triggerSeatsUpdatedForBooking($this->db, $bookingId, 'expired');
             } catch (Exception $e) {
                 $this->db->rollBack();
                 error_log("expireStaleBookings error for booking #$bookingId: " . $e->getMessage());

@@ -21,6 +21,7 @@ import CurfewWarningDialog from "@/components/booking/CurfewWarningDialog";
 import CinemaSeatIcon from "@/components/booking/CinemaSeatIcon";
 import { Badge } from "@/components/ui/badge";
 import { API_ENDPOINTS, apiCall, getImageUrl } from "@/lib/api";
+import { getPusherClient } from "@/lib/pusher";
 import { BookingService } from "@/services/booking.service";
 import { useTheme } from "@/hooks/use-theme";
 
@@ -396,16 +397,33 @@ const SeatSelectionPage: React.FC = () => {
     }
   };
 
-  // Polling cập nhật ghế mỗi 5 giây để hiển thị realtime
+  // Realtime: nhận sự kiện "seats-updated" qua Pusher (WebSocket) để tải lại sơ đồ ghế ngay.
+  // Polling vẫn chạy làm dự phòng (ghế hết hạn do MySQL Event không phát sự kiện):
+  // 30 giây khi có Pusher, 5 giây khi Pusher chưa được cấu hình.
   useEffect(() => {
     const showtimeId = selectedShowtime?.id || searchParams.get("showtime");
     if (!showtimeId) return;
 
-    const pollInterval = setInterval(() => {
-      refreshSeatMap();
-    }, 5000);
+    const pusher = getPusherClient();
+    const channelName = `showtime.${showtimeId}`;
+    const channel = pusher?.subscribe(channelName);
+    const onSeatsUpdated = () => {
+      void refreshSeatMap();
+    };
+    channel?.bind("seats-updated", onSeatsUpdated);
 
-    return () => clearInterval(pollInterval);
+    const pollInterval = setInterval(
+      () => {
+        void refreshSeatMap();
+      },
+      pusher ? 30000 : 5000,
+    );
+
+    return () => {
+      clearInterval(pollInterval);
+      channel?.unbind("seats-updated", onSeatsUpdated);
+      pusher?.unsubscribe(channelName);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedShowtime, searchParams]);
 
@@ -527,6 +545,17 @@ const SeatSelectionPage: React.FC = () => {
 
     // Block held seats (from other users)
     if (seats.some((s) => s.status === "held")) return;
+
+    // Giới hạn số ghế mỗi đơn (chống đầu cơ vé)
+    const maxSeats = systemConfig.maxSeatsPerBooking;
+    if (selectedSeats.length + seats.length > maxSeats) {
+      toast({
+        title: "Vượt quá số ghế cho phép",
+        description: `Mỗi đơn chỉ được chọn tối đa ${maxSeats} ghế.`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Hold seats on server first
     if (showtimeId) {

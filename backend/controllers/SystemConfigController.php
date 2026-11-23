@@ -36,6 +36,15 @@ class SystemConfigController extends BaseController {
                 Response::error('Invalid settings payload provided', 400);
             }
             $errors=ChatSchedulePolicy::validationErrors($data);
+            if (array_key_exists('max_seats_per_booking', $data)) {
+                $maxSeats = filter_var($data['max_seats_per_booking'], FILTER_VALIDATE_INT,
+                    ['options' => ['min_range' => 1, 'max_range' => 20]]);
+                if ($maxSeats === false) {
+                    $errors['max_seats_per_booking'] = 'Số ghế tối đa mỗi đơn phải là số nguyên từ 1 đến 20.';
+                } else {
+                    $data['max_seats_per_booking'] = (string)$maxSeats;
+                }
+            }
             if ($errors) Response::validationError($errors);
             if (array_key_exists('ai_chat_show_reasons', $data)) {
                 $data['ai_chat_show_reasons'] = (string)(int)$data['ai_chat_show_reasons'];

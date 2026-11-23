@@ -450,6 +450,13 @@ class TicketController
             $result = $this->ticketModel->updateStatus($id, 'REFUNDED');
 
             if ($result) {
+                if (!empty($ticket['booking_id'])) {
+                    PusherService::triggerSeatsUpdatedForBooking(
+                        Database::getInstance()->getConnection(),
+                        $ticket['booking_id'],
+                        'ticket-refunded'
+                    );
+                }
                 Response::success([
                     'id' => $id,
                     'refund_amount' => $ticket['price']

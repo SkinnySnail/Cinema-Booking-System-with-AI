@@ -5,47 +5,88 @@
  */
 class PusherService {
     public static function triggerPaymentStatus($bookingId, $transactionCode, $status, $gateway) {
-        $appId = getenv('PUSHER_APP_ID') ?: '';
-        $key = getenv('PUSHER_KEY') ?: '';
-        $secret = getenv('PUSHER_SECRET') ?: '';
-        $cluster = getenv('PUSHER_CLUSTER') ?: 'ap1';
+        return self::trigger('booking.' . (int)$bookingId, 'payment-status-updated', [
+            'booking_id' => (int)$bookingId,
+            'transaction_code' => (string)$transactionCode,
+            'status' => (string)$status,
+            'gateway' => (string)$gateway,
+            'updated_at' => date('c'),
+        ], 8);
+    }
 
-        if ($appId === '' || $key === '' || $secret === '') {
+    /**
+     * Báo cho mọi client đang mở sơ đồ ghế của suất chiếu rằng trạng thái ghế đã đổi.
+     * Payload không chứa thông tin người dùng; client tự tải lại sơ đồ ghế.
+     */
+    public static function triggerSeatsUpdated($showtimeId, $reason) {
+        $showtimeId = (int)$showtimeId;
+        if ($showtimeId <= 0) {
+            return false;
+        }
+        return self::trigger('showtime.' . $showtimeId, 'seats-updated', [
+            'showtime_id' => $showtimeId,
+            'reason' => (string)$reason,
+            'updated_at' => date('c'),
+        ], 3);
+    }
+
+    /**
+     * Như triggerSeatsUpdated nhưng tra suất chiếu từ mã đơn đặt vé.
+     */
+    public static function triggerSeatsUpdatedForBooking($db, $bookingId, $reason) {
+        if (!self::isConfigured()) {
+            return false;
+        }
+        try {
+            $stmt = $db->prepare("SELECT showtime_id FROM bookings WHERE id = :id LIMIT 1");
+            $stmt->execute([':id' => (int)$bookingId]);
+            $showtimeId = (int)$stmt->fetchColumn();
+        } catch (Exception $e) {
+            error_log('Pusher seat lookup failed: ' . $e->getMessage());
+            return false;
+        }
+        return self::triggerSeatsUpdated($showtimeId, $reason);
+    }
+
+    private static function isConfigured() {
+        return (getenv('PUSHER_APP_ID') ?: '') !== ''
+            && (getenv('PUSHER_KEY') ?: '') !== ''
+            && (getenv('PUSHER_SECRET') ?: '') !== '';
+    }
+
+    private static function trigger($channel, $event, array $data, $timeoutSeconds) {
+        if (!self::isConfigured()) {
             // Realtime is optional. Skip silently when not configured.
             return false;
         }
-        
+
         if (!function_exists('curl_init')) {
             error_log('Pusher trigger skipped: cURL extension is not enabled.');
             return false;
         }
 
+        $appId = getenv('PUSHER_APP_ID');
+        $key = getenv('PUSHER_KEY');
+        $secret = getenv('PUSHER_SECRET');
+        $cluster = getenv('PUSHER_CLUSTER') ?: 'ap1';
+
         $host = 'api-' . $cluster . '.pusher.com';
         $path = '/apps/' . $appId . '/events';
         $body = json_encode([
-            'name' => 'payment-status-updated',
-            'channels' => ['booking.' . (int)$bookingId],
-            'data' => json_encode([
-                'booking_id' => (int)$bookingId,
-                'transaction_code' => (string)$transactionCode,
-                'status' => (string)$status,
-                'gateway' => (string)$gateway,
-                'updated_at' => date('c'),
-            ]),
+            'name' => $event,
+            'channels' => [$channel],
+            'data' => json_encode($data, JSON_UNESCAPED_UNICODE),
         ], JSON_UNESCAPED_UNICODE);
 
         if ($body === false) {
             return false;
         }
 
-        $authTimestamp = (string)time();
-        $authVersion = '1.0';
-        $bodyMd5 = md5($body);
         $queryParams = [
             'auth_key' => $key,
-            'auth_timestamp' => $authTimestamp,
-            'auth_version' => $authVersion,
-            'body_md5' => $bodyMd5,
+            'auth_timestamp' => (string)time(),
+            'auth_version' => '1.0',
+            'body_md5' => md5($body),
         ];
         ksort($queryParams);
         $query = http_build_query($queryParams);
@@ -60,7 +101,8 @@ class PusherService {
             CURLOPT_POST => true,
             CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
             CURLOPT_POSTFIELDS => $body,
-            CURLOPT_TIMEOUT => 8,
+            CURLOPT_CONNECTTIMEOUT => 2,
+            CURLOPT_TIMEOUT => (int)$timeoutSeconds,
         ]);
 
         $response = curl_exec($ch);

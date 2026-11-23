@@ -9,6 +9,7 @@ require_once __DIR__ . '/config/Env.php';
 Env::load(__DIR__ . '/.env');
 
 require_once __DIR__ . '/config/Database.php';
+require_once __DIR__ . '/service/PusherService.php';
 require_once __DIR__ . '/models/Booking.php';
 
 $db = Database::getInstance()->getConnection();

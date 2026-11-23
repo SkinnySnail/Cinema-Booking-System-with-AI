@@ -4,7 +4,12 @@ const addresses = [
   "Huỳnh Tấn Phát, Quận 7"
 ];
 
-const apiKey = 'KVeN2HZJbhgfyv2ekxLj';
+// Usage: MAPTILER_KEY=<key> node test-geocode.js
+const apiKey = process.env.MAPTILER_KEY;
+if (!apiKey) {
+  console.error("Set MAPTILER_KEY before running this script.");
+  process.exit(1);
+}
 
 async function test() {
   for (const address of addresses) {

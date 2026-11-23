@@ -74,6 +74,18 @@ class TransactionService
             throw new Exception('Transaction not found', 404);
         }
 
+        // Idempotent: cổng thanh toán gọi cả return URL lẫn IPN cho cùng một giao dịch.
+        // Chỉ xử lý giao dịch đang Pending để không xác nhận/hủy đơn hai lần (cộng điểm, hoàn tồn kho...).
+        if (($transaction['status'] ?? '') !== 'Pending') {
+            return [
+                'transaction_code' => $transaction['transaction_code'],
+                'booking_id' => (int) $transaction['booking_id'],
+                'status' => $transaction['status'],
+                'gateway' => $gateway,
+                'already_processed' => true,
+            ];
+        }
+
         $status = $data['status'] ?? $data['resultCode'] ?? $data['vnp_ResponseCode'] ?? null;
         $isSuccess = $this->isSuccessStatus($gateway, $status);
         $newStatus = $isSuccess ? 'Success' : 'Failed';
@@ -105,6 +117,38 @@ class TransactionService
             'status' => $newStatus,
             'gateway' => $gateway,
         ];
+    }
+
+    /**
+     * Xử lý IPN của VNPay và trả mã phản hồi theo đặc tả VNPay:
+     * 00 thành công, 01 không tìm thấy đơn, 02 đơn đã được xác nhận, 04 sai số tiền,
+     * 97 sai chữ ký, 99 lỗi khác.
+     * @return array{RspCode: string, Message: string}
+     */
+    public function processVNPayIpn(array $data)
+    {
+        if (!PaymentService::verifyVNPayPayment($data)) {
+            return ['RspCode' => '97', 'Message' => 'Invalid signature'];
+        }
+
+        $transactionCode = $data['vnp_TxnRef'] ?? '';
+        $transaction = $transactionCode !== '' ? $this->transactionModel->getByTransactionCode($transactionCode) : null;
+        if (!$transaction) {
+            return ['RspCode' => '01', 'Message' => 'Order not found'];
+        }
+
+        // vnp_Amount = số tiền × 100 (đơn vị nhỏ nhất)
+        $expected = (int) round(((float) ($transaction['amount'] ?? 0)) * 100);
+        if ((int) ($data['vnp_Amount'] ?? -1) !== $expected) {
+            return ['RspCode' => '04', 'Message' => 'Invalid amount'];
+        }
+
+        if (($transaction['status'] ?? '') !== 'Pending') {
+            return ['RspCode' => '02', 'Message' => 'Order already confirmed'];
+        }
+
+        $this->processGatewayVerification('VNPay', $data);
+        return ['RspCode' => '00', 'Message' => 'Confirm Success'];
     }
 
     /**
