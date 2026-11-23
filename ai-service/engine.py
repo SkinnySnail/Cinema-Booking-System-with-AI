@@ -216,13 +216,74 @@ class LanguageModels:
                 excluded = re.search(r"\b(?:khong|dung|tranh)(?:\s+\w+){0,4}\s+$", prefix)
                 (excluded_genre_ids if excluded else genre_ids).append(int(genre["id"]))
                 break
-        audience_match = re.search(r"\b(?:cap doi|hen ho|date night|di (?:xem phim )?voi (?:nguoi yeu|ban gai|ban trai))\b", normalized)
-        audience = "couple" if audience_match and not re.search(
-            r"\b(?:khong|chang)(?:\s+\w+){0,3}\s+$", normalized[:audience_match.start()]) else None
+        negation_prefix = r"\b(?:khong|chang)(?:\s+\w+){0,3}\s+$"
+        kids_match = re.search(
+            r"\b(?:tre em|tre nho|thieu nhi|nhi dong|em be|con nho|cho be|cho con|cho cac be|cho tui nho|danh cho be|di (?:xem phim )?voi con|kids?|children|child)\b",
+            normalized,
+        )
+        family_match = re.search(r"\b(?:gia dinh|ca nha|family)\b", normalized)
+        couple_match = re.search(
+            r"\b(?:cap doi|hen ho|date night|di (?:xem phim )?voi (?:nguoi yeu|ban gai|ban trai))\b",
+            normalized,
+        )
+        audience = None
+        if kids_match and not re.search(negation_prefix, normalized[:kids_match.start()]):
+            audience = "kids"
+        elif family_match and not re.search(negation_prefix, normalized[:family_match.start()]):
+            audience = "family"
+        elif couple_match and not re.search(negation_prefix, normalized[:couple_match.start()]):
+            audience = "couple"
+
+        allowed_age_ratings: list[str] = []
+        if audience in {"kids", "family"}:
+            allowed_age_ratings = ["P", "K"]
+        else:
+            under_age = re.search(r"\bduoi\s+(\d{1,2})\s+tuoi\b", normalized)
+            exact_age = re.search(r"(?<!duoi )(?<!tren )(?<!tu )\b(\d{1,2})\s+tuoi\b", normalized)
+            if under_age:
+                limit_age = int(under_age[1])
+                if limit_age <= 13:
+                    allowed_age_ratings = ["P", "K"]
+                    audience = "kids"
+                elif limit_age <= 16:
+                    allowed_age_ratings = ["P", "K", "T13"]
+                elif limit_age <= 18:
+                    allowed_age_ratings = ["P", "K", "T13", "T16"]
+            elif exact_age:
+                viewer_age = int(exact_age[1])
+                if viewer_age < 13:
+                    allowed_age_ratings = ["P", "K"]
+                    audience = "kids"
+                elif viewer_age < 16:
+                    allowed_age_ratings = ["P", "K", "T13"]
+                elif viewer_age < 18:
+                    allowed_age_ratings = ["P", "K", "T13", "T16"]
+            else:
+                explicit_rating = re.search(r"\b(?:phim|nhan|phan loai|hang)\s+(p|k|t13|t16|t18)\b|\b(t13|t16|t18)\b", normalized)
+                if explicit_rating and not re.search(negation_prefix, normalized[:explicit_rating.start()]):
+                    rating_code = (explicit_rating[1] or explicit_rating[2]).upper()
+                    allowed_age_ratings = [rating_code]
+
+        preferred_names_by_audience = {
+            "couple": {"tinh cam", "hai"},
+            "kids": {"hoat hinh", "hai"},
+            "family": {"hoat hinh", "hai", "tinh cam"},
+        }
+        excluded_names_by_audience = {
+            "kids": {"kinh di", "tinh cam", "tam ly", "hanh dong", "tai lieu", "giat gan", "hinh su", "toi pham", "chien tranh"},
+            "family": {"kinh di", "giat gan", "hinh su", "toi pham"},
+        }
+        audience_excluded_names = excluded_names_by_audience.get(audience, set())
+        audience_excluded_genre_ids = [
+            int(genre["id"]) for genre in genres or []
+            if audience_excluded_names and normalize(genre["name"]) in audience_excluded_names
+        ]
+        preferred_names = preferred_names_by_audience.get(audience, set())
         preferred_genre_ids = [int(genre["id"]) for genre in genres or []
-                               if audience == "couple" and normalize(genre["name"]) in {"tinh cam", "hai"}
-                               and int(genre["id"]) not in excluded_genre_ids]
-        recommend_requested = audience == "couple" or intent == "recommend" or bool(re.search(
+                               if preferred_names and normalize(genre["name"]) in preferred_names
+                               and int(genre["id"]) not in excluded_genre_ids
+                               and int(genre["id"]) not in audience_excluded_genre_ids]
+        recommend_requested = audience in {"couple", "kids", "family"} or bool(allowed_age_ratings) or intent == "recommend" or bool(re.search(
             r"\b(?:goi y|nen xem|nen chon|tu van phim|recommend)\b", normalized))
         schedule_requested = bool(re.search(r"\b(?:lich chieu|suat|luc may|may gio)\b", normalized))
         date_explicit = bool(match or tomorrow or after_tomorrow or relative_today or range_requested)
@@ -236,7 +297,9 @@ class LanguageModels:
                 "date_from": requested_date, "date_to": requested_end, "range_requested": range_requested,
                 "recommend_requested": recommend_requested, "genre_ids": genre_ids,
                 "excluded_genre_ids": excluded_genre_ids,
-                "audience": audience, "preferred_genre_ids": preferred_genre_ids,
+                "audience_excluded_genre_ids": audience_excluded_genre_ids,
+                "audience": audience, "allowed_age_ratings": allowed_age_ratings,
+                "preferred_genre_ids": preferred_genre_ids,
                 "reset_movie_context": reset_movie_context,
                 "movie_candidates": list(movie_candidates),
                 "cinema_candidates": [cinema["id"] for cinema in cinema_matches],

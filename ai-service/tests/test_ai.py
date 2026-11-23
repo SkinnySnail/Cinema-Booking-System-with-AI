@@ -234,6 +234,44 @@ def test_couple_preference_does_not_override_explicit_genres_or_exclusions(langu
     negative = language.understand("Không phải đi hẹn hò, tôi muốn xem phim hành động", [], [], "2026-11-10", genres)
     assert negative["audience"] is None and negative["preferred_genre_ids"] == []
 
+
+@pytest.mark.parametrize("message,expected_audience,expected_ratings", [
+    ("gợi ý các phim cho trẻ em", "kids", ["P", "K"]),
+    ("Phim thiếu nhi nào đang chiếu?", "kids", ["P", "K"]),
+    ("Gợi ý phim cho bé 8 tuổi", "kids", ["P", "K"]),
+    ("Phim cho cả nhà xem cuối tuần", "family", ["P", "K"]),
+    ("Gợi ý phim cho người dưới 16 tuổi", None, ["P", "K", "T13"]),
+    ("Có phim T13 nào hay không?", None, ["T13"]),
+])
+def test_kids_family_and_age_rating_requests_set_allowed_ratings(language, message, expected_audience, expected_ratings):
+    genres = [
+        {"id": 1, "name": "Hành Động"},
+        {"id": 2, "name": "Hài"},
+        {"id": 3, "name": "Tình Cảm"},
+        {"id": 4, "name": "Kinh Dị"},
+        {"id": 5, "name": "Hoạt Hình"},
+        {"id": 7, "name": "Tâm Lý"},
+        {"id": 8, "name": "Tài Liệu"},
+    ]
+    result = language.understand(message, [], [], "2026-11-10", genres)
+    assert result["audience"] == expected_audience
+    assert result["allowed_age_ratings"] == expected_ratings
+    assert result["recommend_requested"]
+    if expected_audience == "kids":
+        assert result["preferred_genre_ids"] == [2, 5]
+        assert set(result["audience_excluded_genre_ids"]) == {1, 3, 4, 7, 8}
+    elif expected_audience == "family":
+        assert set(result["audience_excluded_genre_ids"]) == {4}
+    else:
+        assert result["audience_excluded_genre_ids"] == []
+
+
+def test_negated_kids_phrase_does_not_force_kids_audience(language):
+    result = language.understand("Không phải phim cho trẻ em, gợi ý phim hành động", [], [], "2026-11-10",
+                                 [{"id": 1, "name": "Hành Động"}])
+    assert result["audience"] is None and result["allowed_age_ratings"] == []
+    assert result["genre_ids"] == [1]
+
 def test_forecast_learns_from_occupancy_not_capacity():
     history = [{"movie_id": movie, "weekday": day % 7, "hour": 18, "capacity": 100, "sold": sold}
                for day in range(28) for movie, sold in [(1, 90), (2, 10)]]

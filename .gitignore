@@ -1,5 +1,8 @@
 # Env files
 .env
+.env.all
+.env.local
+*.env.local
 backend/.env
 .env.bak.*
 

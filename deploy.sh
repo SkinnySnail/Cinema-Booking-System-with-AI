@@ -7,7 +7,7 @@
 #
 # Yêu cầu trên server:
 #   - docker, docker compose v2, git
-#   - file .env ở thư mục gốc project (xem .env.deploy.example)
+#   - file .env ở thư mục gốc project (xem .env.example)
 #   - đăng nhập GHCR trước:  echo $TOKEN | docker login ghcr.io -u <user> --password-stdin
 set -euo pipefail
 
