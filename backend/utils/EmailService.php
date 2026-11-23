@@ -395,6 +395,73 @@ if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)
     }
     
     /**
+     * Gửi vé điện tử sau khi đơn được thanh toán.
+     * $details là kết quả Booking::getDetails(): booking_code, movie_title, start_time,
+     * cinema_name, hall_name, final_price, customer_name, customer_email, tickets[], concessions[].
+     * Mã đơn dùng để soát vé (nhân viên quét QR trong mục Lịch sử đặt vé hoặc nhập tay mã đơn).
+     */
+    public function sendTicketEmail(array $details) {
+        $to = trim((string) ($details['customer_email'] ?? ''));
+        if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+
+        $e = function ($value) {
+            return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+        };
+        $code = $e($details['booking_code'] ?? '');
+        $start = !empty($details['start_time']) ? date('H:i - d/m/Y', strtotime($details['start_time'])) : '';
+        $seats = [];
+        $ticketRows = '';
+        foreach ($details['tickets'] ?? [] as $ticket) {
+            $seat = ($ticket['row_code'] ?? '') . ($ticket['number'] ?? '');
+            $seats[] = $seat;
+            $ticketRows .= '<tr><td style="padding:6px 0;border-bottom:1px dashed #ddd;">' . $e($seat)
+                . '</td><td style="padding:6px 0;border-bottom:1px dashed #ddd;font-family:monospace;">'
+                . $e($ticket['ticket_code'] ?? '') . '</td></tr>';
+        }
+        $concessions = '';
+        foreach ($details['concessions'] ?? [] as $item) {
+            $concessions .= '<li>' . $e(($item['quantity'] ?? 1) . ' × ' . ($item['name'] ?? $item['concession_name'] ?? '')) . '</li>';
+        }
+        $frontendUrl = rtrim(getenv('FRONTEND_URL') ?: 'http://localhost:8080', '/');
+
+        $subject = 'Vé xem phim ' . ($details['movie_title'] ?? '') . ' - Mã đơn ' . ($details['booking_code'] ?? '');
+        $message = "
+<!DOCTYPE html>
+<html>
+<head><meta charset='UTF-8'></head>
+<body style='font-family:Arial,sans-serif;color:#333;line-height:1.5;'>
+  <div style='max-width:600px;margin:0 auto;padding:20px;'>
+    <div style='background:linear-gradient(135deg,#f97316 0%,#ea580c 100%);color:#fff;padding:24px;border-radius:10px 10px 0 0;text-align:center;'>
+      <h2 style='margin:0;'>Galaxy Cinema - Vé điện tử</h2>
+    </div>
+    <div style='background:#f9f9f9;padding:24px;border-radius:0 0 10px 10px;'>
+      <p>Xin chào <strong>" . $e($details['customer_name'] ?? 'Quý khách') . "</strong>, đơn đặt vé của bạn đã được thanh toán.</p>
+      <div style='text-align:center;background:#fff;border:2px dashed #f97316;border-radius:10px;padding:16px;margin:16px 0;'>
+        <div style='font-size:13px;color:#666;'>Mã đơn (xuất trình tại cổng soát vé)</div>
+        <div style='font-size:28px;font-weight:bold;letter-spacing:2px;font-family:monospace;'>{$code}</div>
+      </div>
+      <table style='width:100%;font-size:14px;'>
+        <tr><td style='color:#666;width:35%;'>Phim</td><td><strong>" . $e($details['movie_title'] ?? '') . "</strong></td></tr>
+        <tr><td style='color:#666;'>Suất chiếu</td><td>" . $e($start) . "</td></tr>
+        <tr><td style='color:#666;'>Rạp / Phòng</td><td>" . $e(($details['cinema_name'] ?? '') . ' - ' . ($details['hall_name'] ?? '')) . "</td></tr>
+        <tr><td style='color:#666;'>Ghế</td><td>" . $e(implode(', ', $seats)) . "</td></tr>
+        <tr><td style='color:#666;'>Tổng thanh toán</td><td><strong>" . number_format((float) ($details['final_price'] ?? 0), 0, ',', '.') . " đ</strong></td></tr>
+      </table>
+      " . ($concessions !== '' ? "<p style='margin-bottom:4px;'>Bắp nước:</p><ul style='margin-top:0;'>{$concessions}</ul>" : '') . "
+      <table style='width:100%;font-size:13px;margin-top:12px;'><tr><th align='left'>Ghế</th><th align='left'>Mã vé</th></tr>{$ticketRows}</table>
+      <p style='margin-top:20px;'>Mở <a href='{$frontendUrl}/bookings'>Lịch sử đặt vé</a> để xem mã QR. Cổng mở từ 30 phút trước giờ chiếu.</p>
+    </div>
+    <p style='text-align:center;color:#999;font-size:12px;'>Email tự động từ Galaxy Cinema, vui lòng không trả lời.</p>
+  </div>
+</body>
+</html>";
+
+        return $this->sendEmail($to, $subject, $message);
+    }
+
+    /**
      * Gửi mã reset password qua email
      */
     public function sendPasswordResetCode($toEmail, $code, $userName) {

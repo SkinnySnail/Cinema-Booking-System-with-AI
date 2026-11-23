@@ -9,6 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { API_ENDPOINTS, apiCall } from "@/lib/api";
+import { getPusherClient } from "@/lib/pusher";
 import { useAuth } from "@/contexts/AppContext";
 
 interface Notification {
@@ -174,6 +175,33 @@ const NotificationDropdown: React.FC = () => {
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
+
+  // Realtime: reload when the backend announces a new notification via Pusher.
+  // Events carry no content; the list is fetched again through the authenticated API.
+  useEffect(() => {
+    const pusher = getPusherClient();
+    if (!pusher) return;
+
+    const channelNames = ["notifications"];
+    if (isAuthenticated && user?.id) {
+      channelNames.push(`user-notifications.${user.id}`);
+    }
+    const onUpdate = () => {
+      void loadNotifications();
+    };
+    const channels = channelNames.map((name) => {
+      const channel = pusher.subscribe(name);
+      channel.bind("notifications-updated", onUpdate);
+      return channel;
+    });
+
+    return () => {
+      channels.forEach((channel, i) => {
+        channel.unbind("notifications-updated", onUpdate);
+        pusher.unsubscribe(channelNames[i]);
+      });
+    };
+  }, [isAuthenticated, user?.id, loadNotifications]);
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 

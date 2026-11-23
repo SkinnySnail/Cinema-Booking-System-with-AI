@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../config/Database.php';
+require_once __DIR__ . '/../service/PusherService.php';
 
 class Notification {
     private $db;
@@ -50,7 +51,11 @@ class Notification {
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute();
-        return $stmt->rowCount();
+        $published = $stmt->rowCount();
+        if ($published > 0) {
+            PusherService::triggerNotificationsUpdated();
+        }
+        return $published;
     }
 
     private function getAudienceForRoleId($roleId) {
@@ -350,6 +355,9 @@ class Notification {
         $stmt->execute();
 
         $id = (int)$this->db->lastInsertId();
+        if (!$isScheduled && !$this->db->inTransaction()) {
+            PusherService::triggerNotificationsUpdated();
+        }
         return [
             'id' => $id,
             'recipient_count' => $this->countRecipientsByAudience(strtoupper((string)$targetAudience ?: 'ALL')),
@@ -369,12 +377,18 @@ class Notification {
                     VALUES
                         (:title, :message, :type, 'USER', :target_user_id, 'SENT', NOW(), 1)";
             $stmt = $this->db->prepare($sql);
-            return $stmt->execute([
+            $ok = $stmt->execute([
                 ':title' => $title,
                 ':message' => $message,
                 ':type' => strtoupper((string)$type ?: 'BOOKING'),
                 ':target_user_id' => $userId,
             ]);
+            // Inside a transaction (e.g. Booking::confirm) the caller pushes after commit,
+            // so the client never refetches before the row is visible.
+            if ($ok && !$this->db->inTransaction()) {
+                PusherService::triggerNotificationsUpdated($userId);
+            }
+            return $ok;
         }
 
         // Fallback for old schema without target_user_id.

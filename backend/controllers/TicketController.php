@@ -475,22 +475,46 @@ class TicketController
      */
     public function sendEmail($id)
     {
-        AuthMiddleware::requirePermission('tickets.view_own');
+        // Members hold bookings.view_own (not tickets.view_own); ownership is checked below.
+        AuthMiddleware::requirePermission('bookings.view_own');
         try {
             $ticket = $this->ticketModel->getById($id);
 
-            if (!$ticket) {
+            if (!$ticket || empty($ticket['booking_id'])) {
                 Response::notFound('Vé không tồn tại');
             }
 
-            // TODO: Implement email sending logic
-            // - Generate QR code image
-            // - Create HTML email template
-            // - Send via SMTP/mail service
+            $db = Database::getInstance()->getConnection();
+            $bookingModel = new Booking($db);
+            $booking = $bookingModel->getById((int) $ticket['booking_id']);
+            if (!$booking) {
+                Response::notFound('Đơn đặt vé không tồn tại');
+            }
 
+            // Chỉ chủ đơn hoặc nhân sự rạp (Staff/Manager/Admin) mới được gửi lại vé.
+            $authUserId = (int) ($_REQUEST['auth_user_id'] ?? 0);
+            $authRoleId = (int) ($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
+            $authRole = $_REQUEST['auth_user_role'] ?? null;
+            $isStaff = in_array($authRole, ['Admin', 'Manager', 'Staff'], true) || in_array($authRoleId, [3, 4, 5], true);
+            if (!$isStaff && $authUserId !== (int) ($booking['user_id'] ?? 0)) {
+                Response::forbidden('Bạn không có quyền gửi vé của đơn này');
+            }
+
+            if (($booking['status'] ?? '') !== 'Paid') {
+                Response::error('Chỉ gửi được vé của đơn đã thanh toán', 400);
+            }
+
+            $result = $bookingModel->sendTicketEmail((int) $booking['id']);
+            if (!$result['sent']) {
+                Response::error('Không gửi được email vé (đơn chưa có email hoặc lỗi máy chủ mail)', 422);
+            }
+
+            // Che bớt địa chỉ email trong phản hồi.
+            $masked = preg_replace('/(?<=^.).*(?=@)/u', '***', (string) $result['email']);
             Response::success([
-                'id' => $id,
-                'email_sent_to' => $ticket['user_email'] ?? 'N/A'
+                'id' => (int) $id,
+                'booking_id' => (int) $booking['id'],
+                'email_sent_to' => $masked,
             ], 'Email vé đã được gửi thành công');
         } catch (Exception $e) {
             Response::serverError('Lỗi khi gửi email: ' . $e->getMessage());

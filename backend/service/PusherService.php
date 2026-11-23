@@ -31,6 +31,19 @@ class PusherService {
     }
 
     /**
+     * Báo có thông báo mới. $userId = null: thông báo chung (kênh "notifications");
+     * có $userId: thông báo riêng (kênh "user-notifications.{id}").
+     * Payload không chứa nội dung; client tự tải lại danh sách qua API có xác thực.
+     */
+    public static function triggerNotificationsUpdated($userId = null) {
+        $channel = $userId ? 'user-notifications.' . (int) $userId : 'notifications';
+        return self::trigger($channel, 'notifications-updated', [
+            'scope' => $userId ? 'user' : 'broadcast',
+            'updated_at' => date('c'),
+        ], 3);
+    }
+
+    /**
      * Như triggerSeatsUpdated nhưng tra suất chiếu từ mã đơn đặt vé.
      */
     public static function triggerSeatsUpdatedForBooking($db, $bookingId, $reason) {

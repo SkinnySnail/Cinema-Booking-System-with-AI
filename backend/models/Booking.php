@@ -575,6 +575,27 @@ class Booking {
         ]);
     }
 
+    /**
+     * Gửi email vé cho chủ đơn (tài khoản thành viên hoặc khách POS có email).
+     * Lỗi gửi mail không bao giờ làm hỏng luồng thanh toán.
+     * @return array{sent: bool, email: ?string}
+     */
+    public function sendTicketEmail($bookingId) {
+        try {
+            $details = $this->getDetails((int) $bookingId);
+            $email = $details['customer_email'] ?? null;
+            if (!$details || empty($email)) {
+                return ['sent' => false, 'email' => null];
+            }
+            require_once __DIR__ . '/../utils/EmailService.php';
+            $sent = (new EmailService())->sendTicketEmail($details);
+            return ['sent' => (bool) $sent, 'email' => $email];
+        } catch (Throwable $e) {
+            error_log('Ticket email error for booking #' . (int) $bookingId . ': ' . $e->getMessage());
+            return ['sent' => false, 'email' => null];
+        }
+    }
+
     public function confirm($id) {
         $this->db->beginTransaction();
         try {
@@ -641,6 +662,16 @@ class Booking {
             }
 
             $this->db->commit();
+
+            if (!empty($booking['user_id'])) {
+                // Thông báo "Thanh toán thành công" đã ghi trong transaction: báo realtime sau commit.
+                PusherService::triggerNotificationsUpdated((int) $booking['user_id']);
+            }
+
+            // Gửi vé điện tử qua email một lần, khi đơn chuyển từ Pending sang Paid.
+            if (($booking['status'] ?? '') === 'Pending') {
+                $this->sendTicketEmail((int) $id);
+            }
             return true;
         } catch (Exception $e) {
             $this->db->rollBack();
