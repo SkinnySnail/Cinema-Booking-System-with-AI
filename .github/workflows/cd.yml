@@ -126,6 +126,16 @@ jobs:
             StrictHostKeyChecking accept-new
           EOF
 
+      # The server does not git pull, so ship the migrations and their runner
+      # from this checkout (only these paths are replaced).
+      - name: Upload database migrations
+        run: |
+          set -euo pipefail
+          DEPLOY_PATH='${{ secrets.DEPLOY_PATH }}'
+          DEPLOY_PATH="${DEPLOY_PATH:-/opt/galaxy-cinema}"
+          tar -czf - backend/database/migrations scripts/run_migrations.sh \
+            | ssh deploy-server "mkdir -p '$DEPLOY_PATH' && tar -xzf - -C '$DEPLOY_PATH'"
+
       - name: Deploy via SSH
         run: |
           set -euo pipefail
@@ -186,6 +196,16 @@ jobs:
           # --- 5. Run database migrations / seed ---
           if [ "$SKIP_MIGRATIONS" != "true" ]; then
             echo ">> Applying database migrations..."
+            # Tracked migrations: each backend/database/migrations/*.sql runs once
+            # (schema_migrations table). A failure stops the deploy before restart.
+            docker compose -f docker-compose.deploy.yml up -d db
+            for i in $(seq 1 30); do
+              docker compose -f docker-compose.deploy.yml exec -T db sh -c \
+                'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqladmin -uroot ping -h 127.0.0.1' >/dev/null 2>&1 && break
+              sleep 2
+            done
+            bash scripts/run_migrations.sh docker-compose.deploy.yml
+
             # Read DB config from .env on the server (vars are not exported).
             DB_NAME_CFG="$(awk -F= '/^MYSQL_DATABASE=/{print $2}' .env | tail -1)"
             DB_PASS_CFG="$(awk -F= '/^MYSQL_ROOT_PASSWORD=/{print $2}' .env | tail -1)"

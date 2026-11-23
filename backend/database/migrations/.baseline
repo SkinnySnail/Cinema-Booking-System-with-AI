@@ -1,0 +1,27 @@
+# Migrations already contained in schema.sql (or applied by hand) before tracked migrations were introduced.
+# On the first run of scripts/run_migrations.sh these are recorded as applied without executing them.
+# Never add new files here: new migrations must run once through the runner.
+001_add_permissions_system.sql
+003_dynamic_rbac_system.sql
+add_booking_code.sql
+add_chatbot_output_settings.sql
+add_chatbot_schedule_settings.sql
+add_cinema_status.sql
+add_detailed_address_to_cinemas_safe.sql
+add_director_cast_columns.sql
+add_inactive_seat_status.sql
+add_is_active_to_permissions.sql
+add_manager_module.sql
+add_max_discount_to_promotions.sql
+add_missing_columns.sql
+add_notification_schedule_columns.sql
+add_pos_customers_guest_booking_support.sql
+add_promotions.sql
+add_seat_holds.sql
+add_status_to_reviews.sql
+add_transaction_received_amount.sql
+add_user_profile_address_gender.sql
+fix_transaction_status.sql
+refactor_notifications_schema.sql
+seed_current_showtimes.sql
+update_concession_inventory.sql
