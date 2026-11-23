@@ -88,6 +88,10 @@ const SettingsLoader = () => {
               1,
               Math.floor(Number(dbConfig.seat_hold_duration) / 60),
             );
+          if (Number(dbConfig.max_seats_per_booking) > 0)
+            systemConfig.maxSeatsPerBooking = Number(
+              dbConfig.max_seats_per_booking,
+            );
           if (dbConfig.cleanup_duration)
             systemConfig.defaultCleanupDuration = Number(
               dbConfig.cleanup_duration,

@@ -602,10 +602,17 @@ class ShowtimeController
                 return Response::error('seat_ids is required', 400);
             }
 
-            $seatIds = array_map('intval', $seatIds);
+            $seatIds = array_values(array_unique(array_map('intval', $seatIds)));
 
             require_once __DIR__ . '/../models/SeatHold.php';
             $seatHoldModel = new SeatHold();
+
+            // Giới hạn tổng số ghế user giữ cho 1 suất (chống đầu cơ)
+            $maxSeats = (new ViewingPolicy(Database::getInstance()->getConnection()))->maxSeatsPerBooking();
+            $alreadyHeld = $seatHoldModel->getUserHeldSeatIds($id, (int)$userId);
+            if (count(array_unique(array_merge($alreadyHeld, $seatIds))) > $maxSeats) {
+                return Response::error("Mỗi đơn chỉ được chọn tối đa {$maxSeats} ghế.", 422);
+            }
 
             // Kiểm tra ghế đã SOLD chưa
             foreach ($seatIds as $seatId) {
@@ -616,6 +623,10 @@ class ShowtimeController
             }
 
             $result = $seatHoldModel->holdSeats($id, $seatIds, (int)$userId);
+
+            if (count($result['failed_seats']) < count($seatIds)) {
+                PusherService::triggerSeatsUpdated($id, 'held');
+            }
 
             if ($result['success']) {
                 return Response::success([
@@ -659,6 +670,8 @@ class ShowtimeController
                 $seatIds = array_map('intval', $seatIds);
                 $seatHoldModel->releaseSeats($id, $seatIds, (int)$userId);
             }
+
+            PusherService::triggerSeatsUpdated($id, 'released');
 
             return Response::success(['message' => 'Nhả ghế thành công']);
         } catch (Exception $e) {
@@ -972,6 +985,17 @@ class ShowtimeController
             $created = [];
             $skipped = 0;
 
+            // Ràng buộc pháp lý: phim K (dành cho khán giả dưới 13 tuổi) phải kết thúc trước giờ giới nghiêm dưới 13.
+            $viewingPolicy = new ViewingPolicy($db);
+            $fitsCurfew = function ($movie, DateTime $slotStart) use ($viewingPolicy) {
+                $limit = $viewingPolicy->schedulingCurfewMinutes($movie['age_rating'] ?? '');
+                if ($limit === null) {
+                    return true;
+                }
+                $endMinutes = ViewingPolicy::endMinutes($slotStart->format('Y-m-d H:i:s'), (int) ($movie['duration'] ?? 0));
+                return $endMinutes <= $limit;
+            };
+
             $start = new DateTime($startDate);
             $end = new DateTime($endDate);
             $end->setTime(0, 0, 0);
@@ -1024,9 +1048,10 @@ class ShowtimeController
 
                         // Luon xoay tren pool hon hop: phim uu tien + phim thuong
                         // Trong do phim uu tien co trong so lon hon nen xuat hien nhieu hon.
-                        $candidates = array_values(array_filter($schedulingMovies, function ($m) use ($current) {
+                        $candidates = array_values(array_filter($schedulingMovies, function ($m) use ($current, $fitsCurfew) {
                             $error = null;
-                            return $this->canScheduleMovieAtTime($m, $current->format('Y-m-d H:i:s'), $error);
+                            return $this->canScheduleMovieAtTime($m, $current->format('Y-m-d H:i:s'), $error)
+                                && $fitsCurfew($m, $current);
                         }));
 
                         if (empty($candidates)) {
@@ -1052,9 +1077,10 @@ class ShowtimeController
                             if (!empty($vnOnly)) {
                                 $candidates = $vnOnly;
                             } else {
-                                $vnFallback = array_values(array_filter($schedulingMovies, function ($m) use ($current) {
+                                $vnFallback = array_values(array_filter($schedulingMovies, function ($m) use ($current, $fitsCurfew) {
                                     $error = null;
-                                    return ($m['origin'] ?? '') === 'Vietnam' && $this->canScheduleMovieAtTime($m,$current->format('Y-m-d H:i:s'),$error);
+                                    return ($m['origin'] ?? '') === 'Vietnam' && $this->canScheduleMovieAtTime($m,$current->format('Y-m-d H:i:s'),$error)
+                                        && $fitsCurfew($m, $current);
                                 }));
                                 if (!empty($vnFallback)) {
                                     $candidates = $vnFallback;
@@ -1148,8 +1174,8 @@ class ShowtimeController
                 'message' => $dryRun ? 'Xem trước lịch chiếu tự động thành công' : 'Tạo suất chiếu tự động thành công',
                 'summary' => [
                     'algorithm' => !empty($priorityMovies)
-                        ? 'weighted round-robin (priority-biased) with vietnamese-quota fallback'
-                        : 'weighted round-robin with vietnamese-quota',
+                        ? 'weighted round-robin (priority-biased) with vietnamese-quota fallback and age-rating curfew'
+                        : 'weighted round-robin with vietnamese-quota and age-rating curfew',
                     'dry_run' => $dryRun,
                     'cinema_id' => $cinemaId,
                     'cinema_name' => $cinema['name'] ?? '',

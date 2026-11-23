@@ -94,6 +94,7 @@ const AdminSettings: React.FC = () => {
         if (dbConfig.curfew_u16) mappedConfig.curfewTimeU16 = dbConfig.curfew_u16.substring(0, 5);
         if (dbConfig.min_vietnamese_quota) mappedConfig.minVietnameseQuota = Number(dbConfig.min_vietnamese_quota);
         if (dbConfig.seat_hold_duration) mappedConfig.seatHoldDuration = Math.max(1, Math.floor(Number(dbConfig.seat_hold_duration) / 60));
+        if (Number(dbConfig.max_seats_per_booking) > 0) mappedConfig.maxSeatsPerBooking = Number(dbConfig.max_seats_per_booking);
         if (dbConfig.cleanup_duration) mappedConfig.defaultCleanupDuration = Number(dbConfig.cleanup_duration);
         if (dbConfig.loyalty_points_rate) mappedConfig.loyaltyPointsRate = Number(dbConfig.loyalty_points_rate);
         setConfig(prev => ({ ...prev, ...mappedConfig }));
@@ -140,6 +141,9 @@ const AdminSettings: React.FC = () => {
       if (!Number.isInteger(chatContextTtl) || chatContextTtl < 1 || chatContextTtl > 120) {
         throw new Error("Thời hạn ngữ cảnh phải là số nguyên từ 1 đến 120 phút.");
       }
+      if (!Number.isInteger(config.maxSeatsPerBooking) || config.maxSeatsPerBooking < 1 || config.maxSeatsPerBooking > 20) {
+        throw new Error("Số ghế tối đa mỗi đơn phải là số nguyên từ 1 đến 20.");
+      }
 
       // 1. Save system_configs (giờ giới nghiêm, booking, loyalty rate, vietnamese quota)
       const payload = {
@@ -147,6 +151,7 @@ const AdminSettings: React.FC = () => {
         curfew_u16: config.curfewTimeU16 + ":00",
         min_vietnamese_quota: config.minVietnameseQuota,
         seat_hold_duration: config.seatHoldDuration * 60,
+        max_seats_per_booking: config.maxSeatsPerBooking,
         cleanup_duration: config.defaultCleanupDuration,
         loyalty_points_rate: config.loyaltyPointsRate,
         ai_chat_schedule_days: chatScheduleDays,
@@ -331,6 +336,22 @@ const AdminSettings: React.FC = () => {
                 />
                 <p className="text-xs text-muted-foreground">
                   Khoảng thời gian cần thiết để dọn dẹp giữa các suất chiếu
+                </p>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="maxSeats">Số ghế tối đa mỗi đơn</Label>
+                <Input
+                  id="maxSeats"
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={config.maxSeatsPerBooking}
+                  onChange={(e) =>
+                    updateConfig("maxSeatsPerBooking", Number(e.target.value))
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Giới hạn số ghế trong một giao dịch để tránh đầu cơ vé
                 </p>
               </div>
             </div>

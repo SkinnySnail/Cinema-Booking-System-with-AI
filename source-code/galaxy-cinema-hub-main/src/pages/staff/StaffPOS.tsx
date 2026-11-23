@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { systemConfig } from "@/data/mockData";
 import { API_ENDPOINTS, apiCall } from "@/lib/api";
 import { getPusherClient } from "@/lib/pusher";
 import { useAuth } from "@/contexts/AppContext";
@@ -592,6 +593,17 @@ const StaffPOS: React.FC = () => {
   const toggleSeat = (seat: ProcessedSeat) => {
     if (seat.status !== "Available") return;
 
+    const exceedsSeatLimit = (seatIdsToAdd: number[]) => {
+      const total = new Set([...selectedSeatIds, ...seatIdsToAdd]).size;
+      if (total <= systemConfig.maxSeatsPerBooking) return false;
+      toast({
+        title: "Vượt quá số ghế cho phép",
+        description: `Mỗi đơn chỉ được tối đa ${systemConfig.maxSeatsPerBooking} ghế. Hãy tách thành nhiều đơn.`,
+        variant: "destructive",
+      });
+      return true;
+    };
+
     const isCouple =
       String(seat.seat_type).toLowerCase().includes("sweet") ||
       String(seat.seat_type).toLowerCase().includes("couple") ||
@@ -635,6 +647,7 @@ const StaffPOS: React.FC = () => {
             );
             return;
           } else {
+            if (exceedsSeatLimit([seat.id, pairSeat.id])) return;
             setSelectedSeatIds((prev) => [
               ...prev.filter((id) => id !== seat.id && id !== pairSeat!.id),
               seat.id,
@@ -644,6 +657,10 @@ const StaffPOS: React.FC = () => {
           }
         }
       }
+    }
+
+    if (!selectedSeatIds.includes(seat.id) && exceedsSeatLimit([seat.id])) {
+      return;
     }
 
     setSelectedSeatIds((prev) =>

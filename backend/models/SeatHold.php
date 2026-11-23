@@ -161,6 +161,23 @@ class SeatHold
     }
 
     /**
+     * Danh sách seat_id user đang giữ (chưa hết hạn) cho 1 suất chiếu
+     * @return int[]
+     */
+    public function getUserHeldSeatIds($showtimeId, $userId)
+    {
+        $stmt = $this->db->prepare(
+            "SELECT seat_id FROM seat_holds
+             WHERE showtime_id = :showtime_id AND user_id = :user_id AND expires_at > NOW()"
+        );
+        $stmt->execute([
+            ':showtime_id' => (int)$showtimeId,
+            ':user_id' => (int)$userId,
+        ]);
+        return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
      * Xóa các hold đã hết hạn
      */
     public function cleanupExpired()

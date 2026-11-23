@@ -737,6 +737,7 @@ class AdminController extends BaseController {
                 $this->db->prepare("UPDATE transactions SET status = 'Failed' WHERE booking_id = :id AND status = 'Pending'")
                     ->execute([':id' => $id]);
                 $this->db->commit();
+                PusherService::triggerSeatsUpdatedForBooking($this->db, $id, 'cancelled');
                 Response::success(['booking_id' => $id], 'Đã đánh dấu thất bại');
             } else {
                 // refund: bookings→Cancelled, tickets→REFUNDED, transactions→Failed
@@ -749,6 +750,7 @@ class AdminController extends BaseController {
                 $this->db->prepare("UPDATE transactions SET status = 'Failed' WHERE booking_id = :id AND status = 'Pending'")
                     ->execute([':id' => $id]);
                 $this->db->commit();
+                PusherService::triggerSeatsUpdatedForBooking($this->db, $id, 'refunded');
                 Response::success(['booking_id' => $id], 'Đã hoàn tiền');
             }
         } catch (Exception $e) {
