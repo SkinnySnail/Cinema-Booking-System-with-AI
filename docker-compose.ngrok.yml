@@ -1,0 +1,22 @@
+# Public HTTPS access through an ngrok static domain (free plan: one domain).
+# The domain serves the frontend; the Vite dev server proxies /api, /index.php
+# and /uploads to the backend, so payment return URLs and IPN share the domain.
+#
+# 1. Put these in the root .env (gitignored):
+#      NGROK_AUTHTOKEN=<token from https://dashboard.ngrok.com/get-started/your-authtoken>
+#      NGROK_DOMAIN=<your-name>.ngrok-free.app   (https://dashboard.ngrok.com/domains)
+# 2. In backend/.env set APP_URL and FRONTEND_URL to https://<NGROK_DOMAIN>
+# 3. docker compose -f docker.yml -f docker-compose.ngrok.yml up -d
+#    Stop only the tunnel: docker compose -f docker.yml -f docker-compose.ngrok.yml stop ngrok
+#
+# Change the seeded account passwords before exposing the app publicly.
+services:
+  ngrok:
+    image: ngrok/ngrok:3
+    container_name: galaxy_cinema_ngrok
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?Set NGROK_AUTHTOKEN in the root .env}
+    command: ["http", "frontend:8080", "--url=${NGROK_DOMAIN:?Set NGROK_DOMAIN in the root .env}", "--log=stdout"]

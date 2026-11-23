@@ -1,14 +1,15 @@
 /**
  * API Configuration
  */
+import { resolveApiBase } from "./api-origin";
 
 // Base API URL
 // Accept both:
 // - VITE_API_URL=http://localhost:8000
 // - VITE_API_URL=http://localhost:8000/api
-const rawApiUrl = (
-  import.meta.env.VITE_API_URL || "http://localhost:8000"
-).replace(/\/+$/, "");
+// When the page is opened through a tunnel / LAN IP, resolveApiBase switches
+// to the page's own origin (proxied to the backend by Vite).
+const rawApiUrl = resolveApiBase(import.meta.env.VITE_API_URL);
 export const API_BASE_URL = rawApiUrl.endsWith("/api")
   ? rawApiUrl
   : `${rawApiUrl}/api`;

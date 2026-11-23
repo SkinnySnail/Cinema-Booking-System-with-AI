@@ -1,8 +1,9 @@
+import { resolveApiBase } from "./api-origin";
+
 // API Configuration
 // Default to the local PHP built-in server (used in this workspace).
 // You can override with VITE_API_URL in your environment (.env.local)
-export const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:8000";
+export const API_BASE_URL = resolveApiBase(import.meta.env.VITE_API_URL);
 
 export const API_ENDPOINTS = {
   AI_RECOMMENDATIONS: `${API_BASE_URL}/api/ai/recommendations`,
