@@ -23,6 +23,25 @@ services:
       timeout: 5s
       retries: 10
 
+  ai:
+    image: ${AI_IMAGE:-}
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: galaxy_cinema_ai
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      OMP_NUM_THREADS: "1"
+    expose:
+      - "8001"
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)" ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
   backend:
     # image: dùng khi CI/CD đã push image lên GHCR (xem BACKEND_IMAGE trong .env).
     # build:  dùng khi chạy tay, không có image dựng sẵn.
@@ -43,10 +62,13 @@ services:
       DB_CHARSET: utf8mb4
       # MySQL trong container nghe ở 3306. Cổng mở ra host là CINEMA_DB_PORT.
       DB_PORT: "3306"
+      AI_SERVICE_URL: http://ai:8001
     ports:
       - "${BACKEND_PORT:-8000}:8080"
     depends_on:
       db:
+        condition: service_healthy
+      ai:
         condition: service_healthy
     healthcheck:
       test: [ "CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1:8080/api/health') ? 0 : 1);" ]

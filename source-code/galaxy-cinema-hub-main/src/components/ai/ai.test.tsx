@@ -6,7 +6,7 @@ import RecommendationsSection from "./RecommendationsSection";
 import SentimentInsights from "./SentimentInsights";
 import AISchedulingOption from "./AISchedulingOption";
 
-const mocks = vi.hoisted(() => ({ chat: vi.fn(), recommendations: vi.fn(), sentiments: vi.fn(), user: undefined as { id: string } | undefined }));
+const mocks = vi.hoisted(() => ({ chat: vi.fn(), chatHistory: vi.fn(), clearChatHistory: vi.fn(), recommendations: vi.fn(), sentiments: vi.fn(), user: undefined as { id: string } | undefined }));
 vi.mock("@/contexts/AppContext", () => ({ useAuth: () => ({ user: mocks.user }) }));
 vi.mock("@/services/ai.service", () => ({ aiService: mocks }));
 vi.mock("@/lib/api", () => ({ getImageUrl: (url: string) => url }));
@@ -47,6 +47,22 @@ describe("Cinema assistant", () => {
   it("does not overlay management screens", () => {
     render(wrap(<CinemaAssistant />, "/manager/reviews"));
     expect(screen.queryByRole("button", { name: "Mở trợ lý điện ảnh" })).not.toBeInTheDocument();
+  });
+
+  it("loads and clears saved chat history for a signed-in user", async () => {
+    mocks.user = { id: "4" };
+    mocks.chatHistory.mockResolvedValueOnce({
+      retention_days: 30,
+      items: [{ id: 10, user_message: "Lịch ngày mai", assistant_reply: "Có 3 suất chiếu", links: [] }],
+      pagination: { page: 1, limit: 30, total: 1, total_pages: 1 },
+    });
+    mocks.clearChatHistory.mockResolvedValueOnce({ deleted: 1 });
+    render(wrap(<CinemaAssistant />));
+    fireEvent.click(screen.getByRole("button", { name: "Mở trợ lý điện ảnh" }));
+    expect(await screen.findByText("Có 3 suất chiếu")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa lịch sử chat" }));
+    await waitFor(() => expect(mocks.clearChatHistory).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText("Có 3 suất chiếu")).not.toBeInTheDocument());
   });
 });
 

@@ -69,7 +69,7 @@ class AIController extends BaseController {
         }
         $concessions=array_column($snapshot['concessions'],null,'id'); $combos=[];
         foreach ($result['concessions'] ?? [] as $rank) {
-            if(isset($concessions[(int)$rank['id']])) $combos[]=$concessions[(int)$rank['id']]+['reason'=>$rank['reason']];
+            if(isset($concessions[(int)$rank['id']])) $combos[]=$concessions[(int)$rank['id']]+['reason'=>$rank['reason'],'score'=>$rank['score'] ?? null];
         }
         return ['movies'=>$items,'concessions'=>$combos,'mode'=>$result['mode'] ?? 'hybrid','ai_available'=>$available,
             'model'=>$result['model'] ?? $result['mode'] ?? null,'preference_applied'=>$preferenceApplied];
@@ -400,7 +400,24 @@ class AIController extends BaseController {
             $reply='Chào bạn! Mình hỗ trợ gợi ý phim, tìm lịch theo tên phim/rạp/ngày, hướng dẫn đặt vé, bắp nước và điểm thưởng. Thử: “Lịch chiếu ngày mai” hoặc “Tôi nên xem phim gì?”.';
         }
         if ($scheduleIntent && !empty($range['note'])) $reply=$range['note']."\n".$reply;
+        $historyId = null;
+        if ($uid > 0 && $available) {
+            try {
+                $historyId = (new AIChatHistory($this->db))->saveTurn(
+                    $uid,
+                    $message,
+                    $reply,
+                    $intent,
+                    is_string($model) ? $model : null,
+                    $links,
+                    (int)$chatSettings['ai_chat_history_retention_days']
+                );
+            } catch (Throwable $e) {
+                error_log('AI chat history save failed: ' . $e->getMessage());
+            }
+        }
         Response::success(['reply'=>$reply,'links'=>$links,'intent'=>$intent,'ai_available'=>$available,
+            'history_id'=>$historyId,
             'intents'=>$combined && $intent==='showtimes' ? ['showtimes','recommend'] : [$intent],
             'genres'=>array_map(fn($id)=>$genreCatalog[$id]['name'],$genreIds),
             'excluded_genres'=>array_map(fn($id)=>$genreCatalog[$id]['name'],$excludedGenreIds),
@@ -414,6 +431,54 @@ class AIController extends BaseController {
             'alternatives'=>$alternatives ?: null,
             'context'=>$replyContext]);
     }
+    private function requireSignedInViewer(): int {
+        unset($_REQUEST['auth_user_id'], $_REQUEST['auth_user_role'], $_REQUEST['auth_user_role_id'], $_REQUEST['auth_role_id']);
+        AuthMiddleware::authenticate();
+        $uid = (int)($_REQUEST['auth_user_id'] ?? 0);
+        if ($uid <= 0) {
+            Response::unauthorized('Vui lòng đăng nhập để sử dụng lịch sử chat.');
+        }
+        return $uid;
+    }
+
+    public function chatHistory() {
+        $uid = $this->requireSignedInViewer();
+        $limit = max(1, min(100, (int)($_GET['limit'] ?? 30)));
+        $page = max(1, (int)($_GET['page'] ?? 1));
+        $settings = ChatSchedulePolicy::settings((new SystemConfig())->getAll());
+        $retentionDays = (int)$settings['ai_chat_history_retention_days'];
+        $result = (new AIChatHistory($this->db))->listByUser($uid, $limit, $page);
+        Response::success([
+            'items' => $result['items'],
+            'retention_days' => $retentionDays,
+            'pagination' => [
+                'page' => $result['page'],
+                'limit' => $result['limit'],
+                'total' => $result['total'],
+                'total_pages' => (int)ceil($result['total'] / max(1, $result['limit'])),
+            ],
+        ]);
+    }
+
+    public function clearChatHistory() {
+        $uid = $this->requireSignedInViewer();
+        $deleted = (new AIChatHistory($this->db))->deleteAllByUser($uid);
+        Response::success(['deleted' => $deleted], 'Đã xóa toàn bộ lịch sử chat của bạn.');
+    }
+
+    public function deleteChatHistoryItem($id) {
+        $uid = $this->requireSignedInViewer();
+        $messageId = (int)$id;
+        if ($messageId <= 0) {
+            Response::validationError(['id' => 'ID lịch sử chat không hợp lệ.']);
+        }
+        $deleted = (new AIChatHistory($this->db))->deleteOne($uid, $messageId);
+        if (!$deleted) {
+            Response::notFound('Không tìm thấy mục lịch sử chat này.');
+        }
+        Response::success(['deleted' => true, 'id' => $messageId], 'Đã xóa mục lịch sử chat.');
+    }
+
     public function sentiments() {
         AuthMiddleware::requireManager(); AuthMiddleware::requirePermission('reviews.view_all');
         $input=self::getRequestData();

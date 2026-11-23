@@ -10,7 +10,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 PROJECT=galaxy-cinema-local
-COMPOSE="docker compose -p $PROJECT -f docker.yml -f docker-compose.ai.yml --profile ai"
+COMPOSE="docker compose -p $PROJECT -f docker.yml"
 
 # AI_SERVICE_KEY must be identical for the backend and the AI container.
 # Read it from .env; generate one only when it is missing or empty.

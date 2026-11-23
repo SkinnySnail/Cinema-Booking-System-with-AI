@@ -307,7 +307,7 @@ function Resolve-StackConfig([System.Collections.IDictionary]$EffectiveRoot, [bo
     if (!$aiKey) { $aiKey = 'placeholder-for-compose-control' }
     $env:AI_SERVICE_KEY = $aiKey
 
-    $composeFiles = @('compose', '-f', 'docker.yml', '-f', 'docker-compose.ai.yml')
+    $composeFiles = @('compose', '-f', 'docker.yml')
     if ($useOllama) {
         $composeFiles += @('-f', 'docker-compose.ollama.yml')
     }
@@ -338,7 +338,7 @@ function Resolve-StackConfig([System.Collections.IDictionary]$EffectiveRoot, [bo
 }
 
 function Stop-ConflictingRepoStack([string]$Docker, [string]$CurrentProjectName) {
-    foreach ($container in @('galaxy_cinema_db', 'galaxy_cinema_app', 'galaxy_cinema_frontend', 'galaxy_cinema_ngrok')) {
+    foreach ($container in @('galaxy_cinema_db', 'galaxy_cinema_ai', 'galaxy_cinema_app', 'galaxy_cinema_frontend', 'galaxy_cinema_ngrok')) {
         $raw = & $Docker ps -a --filter "name=^/$container`$" --format '{{.Names}}'
         if ($raw) {
             $owner = (& $Docker inspect $container | ConvertFrom-Json)[0].Config.Labels.'com.docker.compose.project'
@@ -360,7 +360,7 @@ function Wait-AndVerifyApp([string]$Docker, [hashtable]$Stack, [System.Collectio
     $webPort = if ($EffectiveRoot['CINEMA_WEB_PORT']) { $EffectiveRoot['CINEMA_WEB_PORT'] } else { '8080' }
     $apiUrl = "http://localhost:$apiPort"
 
-    $aiContainer = (& $Docker @($Stack.ComposeFiles + @('--profile', 'ai', 'ps', '-q', 'ai')) | Select-Object -First 1)
+    $aiContainer = (& $Docker @($Stack.ComposeFiles + @('ps', '-q', 'ai')) | Select-Object -First 1)
     if ($aiContainer) {
         $aiContainer = $aiContainer.Trim()
         Wait-Ready 'AI service' {
@@ -437,7 +437,7 @@ try {
         $docker = Ensure-DockerReady $false
         $effectiveRoot = Read-EnvMap $rootTarget
         $stack = Resolve-StackConfig $effectiveRoot ($Action -eq 'unpause')
-        $baseArgs = $stack.ComposeFiles + @('--profile', 'ai')
+        $baseArgs = $stack.ComposeFiles
 
         switch ($Action) {
             'status' {
@@ -469,7 +469,7 @@ try {
         $docker = Ensure-DockerReady $true
         $effectiveRoot = Read-EnvMap $rootTarget
         $stack = Resolve-StackConfig $effectiveRoot $true
-        $baseArgs = $stack.ComposeFiles + @('--profile', 'ai')
+        $baseArgs = $stack.ComposeFiles
 
         $existingIds = @(& $docker @($baseArgs + @('ps', '-a', '-q')) | Where-Object { $_.Trim() -ne '' })
         if ($existingIds.Count -eq 0) {
@@ -507,7 +507,7 @@ try {
     $docker = Ensure-DockerReady $true
     Stop-ConflictingRepoStack $docker $currentProjectName
     $stack = Resolve-StackConfig $effectiveRoot $true
-    $baseArgs = $stack.ComposeFiles + @('--profile', 'ai')
+    $baseArgs = $stack.ComposeFiles
 
     if ($Action -eq 'reset') {
         Write-Host '[Reset] Removing containers and DB volume...'

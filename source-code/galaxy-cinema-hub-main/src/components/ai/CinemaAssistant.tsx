@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { MessageCircle, Send, X, Loader2 } from "lucide-react";
+import { MessageCircle, Send, X, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AppContext";
 import { aiService, type ChatContext } from "@/services/ai.service";
 
-type Message = { role: "user" | "assistant"; text: string; links?: { label: string; url: string }[] };
+type Message = { role: "user" | "assistant"; text: string; links?: { label: string; url: string }[]; historyId?: number };
 export default function CinemaAssistant() {
   const { user } = useAuth();
   const { pathname, search } = useLocation();
@@ -14,13 +14,52 @@ export default function CinemaAssistant() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [context, setContext] = useState<ChatContext>();
+  const [retentionDays, setRetentionDays] = useState<number>(30);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const generation = useRef(0);
+  const loadedHistoryFor = useRef<string | undefined>(undefined);
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { generation.current++; setMessages([]); setContext(undefined); setBusy(false); setError(""); }, [user?.id]);
+  useEffect(() => {
+    generation.current++;
+    loadedHistoryFor.current = undefined;
+    setMessages([]);
+    setContext(undefined);
+    setBusy(false);
+    setError("");
+  }, [user?.id]);
+  useEffect(() => {
+    if (!open || !user?.id || loadedHistoryFor.current === user.id || !aiService.chatHistory) return;
+    loadedHistoryFor.current = user.id;
+    const current = generation.current;
+    Promise.resolve(aiService.chatHistory(30)).then(res => {
+      if (current !== generation.current || !res) return;
+      if (res?.retention_days) setRetentionDays(res.retention_days);
+      const restored: Message[] = [];
+      for (const item of res?.items ?? []) {
+        restored.push({ role: "user", text: item.user_message, historyId: item.id });
+        restored.push({ role: "assistant", text: item.assistant_reply, links: item.links, historyId: item.id });
+      }
+      if (restored.length) setMessages(restored);
+    }).catch(() => {});
+  }, [open, user?.id]);
   useEffect(() => { end.current?.scrollIntoView?.({ behavior: "smooth" }); }, [messages, open]);
   if (/^\/(admin|manager|staff)(\/|$)/.test(pathname)) return null;
+  const clearHistory = async () => {
+    if (!user?.id || busy || !aiService.clearChatHistory) return;
+    const current = generation.current;
+    setBusy(true); setError("");
+    try {
+      await aiService.clearChatHistory();
+      if (current !== generation.current) return;
+      setMessages([]);
+      setContext(undefined);
+    } catch {
+      if (current === generation.current) setError("Chưa xóa được lịch sử chat. Bạn có thể thử lại.");
+    } finally {
+      if (current === generation.current) setBusy(false);
+    }
+  };
   const send = async (event: React.FormEvent) => {
     event.preventDefault();
     const question = input.trim();
@@ -32,7 +71,7 @@ export default function CinemaAssistant() {
       const response = await aiService.chat(question, context);
       if (current !== generation.current) return;
       setContext(response.context);
-      setMessages(previous => [...previous, { role: "assistant", text: response.reply, links: response.links }]);
+      setMessages(previous => [...previous, { role: "assistant", text: response.reply, links: response.links, historyId: response.history_id ?? undefined }]);
     } catch { if (current === generation.current) { setError("Chưa gửi được câu hỏi. Bạn có thể thử lại."); setInput(question); } }
     finally { if (current === generation.current) setBusy(false); }
   };
@@ -40,7 +79,20 @@ export default function CinemaAssistant() {
     <div className="fixed bottom-5 right-4 z-50">
       {!open ? <Button onClick={() => setOpen(true)} className="rounded-full shadow-lg" aria-label="Mở trợ lý điện ảnh"><MessageCircle className="mr-2 h-5 w-5" />Trợ lý điện ảnh</Button> : (
         <section role="dialog" aria-label="Trợ lý điện ảnh" className="flex h-[min(34rem,80vh)] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl">
-          <header className="flex items-center justify-between border-b p-4"><h2 className="font-semibold">Trợ lý điện ảnh</h2><Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Đóng trợ lý"><X className="h-4 w-4" /></Button></header>
+          <header className="flex items-center justify-between border-b p-4">
+            <div>
+              <h2 className="font-semibold">Trợ lý điện ảnh</h2>
+              {user?.id && <p className="text-[11px] text-muted-foreground">Lịch sử tự động xóa sau {retentionDays} ngày</p>}
+            </div>
+            <div className="flex items-center gap-1">
+              {user?.id && messages.length > 0 && (
+                <Button variant="ghost" size="icon" onClick={clearHistory} disabled={busy} aria-label="Xóa lịch sử chat" title="Xóa lịch sử chat">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Đóng trợ lý"><X className="h-4 w-4" /></Button>
+            </div>
+          </header>
           <div className="flex-1 space-y-4 overflow-y-auto p-4" aria-live="polite">
             {!messages.length && <p className="text-sm text-muted-foreground">Mình có thể gợi ý phim, tra lịch chiếu, dự báo suất đông và phân tích bình luận. Thử “Lịch chiếu 7 ngày tới tại Galaxy Nguyễn Du” hoặc “Phân tích bình luận: Phim hay và diễn xuất tốt”.</p>}
             {messages.map((message, index) => <div key={index} className={`rounded-xl p-3 text-sm ${message.role === "user" ? "ml-6 bg-primary text-primary-foreground" : "mr-3 bg-muted"}`}>

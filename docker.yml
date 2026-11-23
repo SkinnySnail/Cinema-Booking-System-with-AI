@@ -17,6 +17,16 @@ services:
       - ./backend/database/auto_seed_current_showtimes.sql:/docker-entrypoint-initdb.d/03_auto_seed_current_showtimes.sql:ro
     command: --default-time-zone=+07:00 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 
+  ai:
+    build: ./ai-service
+    container_name: galaxy_cinema_ai
+    restart: unless-stopped
+    environment:
+      AI_SERVICE_KEY: "${AI_SERVICE_KEY:-}"
+      OMP_NUM_THREADS: "1"
+    expose:
+      - "8001"
+
   app:
     build:
       context: .
@@ -36,10 +46,14 @@ services:
       # MySQL trong container nghe ở 3306. Port 3307 chỉ là mapping ra host,
       # nên KHÔNG được đưa DB_PORT=3307 vào trong container.
       DB_PORT: "3306"
+      AI_SERVICE_URL: http://ai:8001
+      AI_SERVICE_KEY: "${AI_SERVICE_KEY:-}"
+      AI_ENABLED: "${AI_ENABLED:-true}"
     ports:
       - "${CINEMA_API_PORT:-8000}:8000"
     depends_on:
       - db
+      - ai
     command: php -S 0.0.0.0:8000 -t /app/backend /app/backend/index.php
 
   api-test:

@@ -51,6 +51,52 @@ def test_concession_personal_affinity(movies):
         {"id": 1, "popularity": 100, "affinity": 0}, {"id": 2, "popularity": 2, "affinity": 3}]})
     assert result["concessions"][0]["id"] == 2
 
+
+def test_concession_collaborative_filtering_discovers_copurchased_combo(movies):
+    # User 1 bought combo 1; users 2 & 3 bought combos 1 and 2 together;
+    # unrelated users 4 & 5 made combo 3 globally popular.
+    concessions = [
+        {"id": 1, "popularity": 30, "affinity": 2},
+        {"id": 2, "popularity": 20, "affinity": 0},
+        {"id": 3, "popularity": 500, "affinity": 0},
+    ]
+    concession_interactions = [
+        {"user_id": 1, "concession_id": 1, "weight": 2},
+        {"user_id": 2, "concession_id": 1, "weight": 2},
+        {"user_id": 2, "concession_id": 2, "weight": 3},
+        {"user_id": 3, "concession_id": 1, "weight": 1},
+        {"user_id": 3, "concession_id": 2, "weight": 2},
+        {"user_id": 4, "concession_id": 3, "weight": 10},
+        {"user_id": 5, "concession_id": 3, "weight": 10},
+    ]
+    result = recommend({
+        "movies": movies,
+        "interactions": [],
+        "concessions": concessions,
+        "concession_interactions": concession_interactions,
+        "user_id": 1,
+    })
+    ids = [c["id"] for c in result["concessions"]]
+    assert ids[0] == 2
+    assert ids.index(2) < ids.index(3)
+    assert "tương tự" in result["concessions"][0]["reason"]
+    assert all(math.isfinite(c["score"]) and 0 <= c["score"] <= 1 for c in result["concessions"])
+
+
+def test_concession_cold_start_falls_back_to_popularity(movies):
+    result = recommend({
+        "movies": movies,
+        "interactions": [],
+        "concessions": [
+            {"id": 1, "popularity": 5, "affinity": 0},
+            {"id": 2, "popularity": 50, "affinity": 0},
+        ],
+        "concession_interactions": [],
+        "user_id": 0,
+    })
+    assert [c["id"] for c in result["concessions"]] == [2, 1]
+    assert result["concessions"][0]["reason"] == "Combo được yêu thích"
+
 @pytest.mark.parametrize("text,label", [
     ("Bộ phim hay và rất đáng tiền", "positive"),
     ("Phim rất dở và làm tôi thất vọng", "negative"),

@@ -99,6 +99,9 @@ $router->get('/api/health', function () {
 // ============================================
 $router->get('/api/ai/recommendations', 'AIController@recommendations');
 $router->post('/api/ai/chat', 'AIController@chat');
+$router->get('/api/ai/chat/history', 'AIController@chatHistory');
+$router->delete('/api/ai/chat/history', 'AIController@clearChatHistory');
+$router->delete('/api/ai/chat/history/:id', 'AIController@deleteChatHistoryItem');
 $router->post('/api/ai/reviews/sentiment', 'AIController@sentiments');
 
 $router->post('/api/halls', 'HallController@create'); // Admin

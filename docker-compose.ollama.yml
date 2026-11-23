@@ -1,4 +1,4 @@
-# Use together with docker.yml and docker-compose.ai.yml for local tuned AI.
+# Use together with docker.yml for local tuned AI models via Ollama.
 services:
   ai:
     environment:

@@ -50,6 +50,11 @@ class AIData {
             WHERE b.user_id IS NOT NULL AND b.status='Paid' AND t.status IN ('SOLD','USED')
               AND b.created_at>=DATE_SUB(NOW(), INTERVAL 180 DAY)
             GROUP BY b.user_id,s.movie_id ORDER BY MAX(b.created_at) DESC LIMIT 10000")->fetchAll(PDO::FETCH_ASSOC);
+        $concessionEvents = $this->db->query("SELECT b.user_id,bc.concession_id,SUM(bc.quantity) AS weight
+            FROM booking_concessions bc JOIN bookings b ON b.id=bc.booking_id
+            WHERE b.user_id IS NOT NULL AND b.status='Paid'
+              AND b.created_at>=DATE_SUB(NOW(), INTERVAL 180 DAY)
+            GROUP BY b.user_id,bc.concession_id ORDER BY MAX(b.created_at) DESC LIMIT 10000")->fetchAll(PDO::FETCH_ASSOC);
         $query = "SELECT c.id,c.name,c.price,c.image_url,c.category,
             COALESCE((SELECT SUM(bc.quantity) FROM booking_concessions bc JOIN bookings b ON b.id=bc.booking_id WHERE bc.concession_id=c.id AND b.status='Paid'),0) AS popularity,
             COALESCE((SELECT SUM(bc.quantity) FROM booking_concessions bc JOIN bookings b ON b.id=bc.booking_id WHERE bc.concession_id=c.id AND b.status='Paid' AND b.user_id=?),0) AS affinity
@@ -59,7 +64,7 @@ class AIData {
         $query .= ') ORDER BY c.id LIMIT 200';
         $stmt=$this->db->prepare($query); $stmt->execute($params);
         return ['movies'=>$movies,'interactions'=>$events,'concessions'=>$stmt->fetchAll(PDO::FETCH_ASSOC),
-            'user_id'=>$userId,'movie_id'=>$seed,'limit'=>$limit];
+            'concession_interactions'=>$concessionEvents,'user_id'=>$userId,'movie_id'=>$seed,'limit'=>$limit];
     }
 
     public function forecastHistory(int $cinemaId): array {

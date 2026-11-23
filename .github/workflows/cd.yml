@@ -11,7 +11,7 @@ on:
       deploy_ai:
         description: 'Deploy AI service too? (true/false)'
         required: false
-        default: 'false'
+        default: 'true'
       skip_migrations:
         description: 'Skip auto-seed showtime SQL? (true/false)'
         required: false
@@ -146,7 +146,7 @@ jobs:
             BACKEND_IMAGE='${{ needs.build.outputs.backend_image }}' \
             FRONTEND_IMAGE='${{ needs.build.outputs.frontend_image }}' \
             AI_IMAGE='${{ needs.build.outputs.ai_image }}' \
-            DEPLOY_AI='${{ github.event.inputs.deploy_ai || 'false' }}' \
+            DEPLOY_AI='${{ github.event.inputs.deploy_ai || 'true' }}' \
             SKIP_MIGRATIONS='${{ github.event.inputs.skip_migrations || 'false' }}' \
             GHCR_TOKEN='${{ secrets.GITHUB_TOKEN }}' \
             GHCR_USER='${{ github.actor }}' \

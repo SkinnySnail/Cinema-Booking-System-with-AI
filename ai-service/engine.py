@@ -311,6 +311,94 @@ class LanguageModels:
                 "cinema_id": cinema_matches[0]["id"] if cinema_matches else None}
 
 
+def recommend_concessions(
+    concessions: list[dict],
+    concession_interactions: list[dict],
+    target_user_id: int,
+    limit: int = 3,
+) -> list[dict]:
+    """Item-based and user-based collaborative filtering for concessions with safe fallback."""
+    if not concessions:
+        return []
+
+    def scale(values: np.ndarray) -> np.ndarray:
+        return values / values.max() if values.size and values.max() > 0 else values
+
+    item_ids = {int(c["id"]): idx for idx, c in enumerate(concessions)}
+    n_items = len(concessions)
+    affinity = np.array([max(0.0, float(c.get("affinity", 0))) for c in concessions], dtype=float)
+    popularity = np.array([max(0.0, float(c.get("popularity", 0))) for c in concessions], dtype=float)
+
+    cf_scores = np.zeros(n_items, dtype=float)
+    users = list(dict.fromkeys(
+        int(e["user_id"]) for e in concession_interactions if int(e.get("concession_id", 0)) in item_ids
+    ))[:1000]
+    if target_user_id and target_user_id not in users and any(
+        int(e.get("user_id", 0)) == target_user_id and int(e.get("concession_id", 0)) in item_ids
+        for e in concession_interactions
+    ):
+        users = users[:999] + [target_user_id]
+
+    if target_user_id and target_user_id in users and len(users) >= 2 and n_items >= 2:
+        user_index = {u: idx for idx, u in enumerate(users)}
+        matrix = np.zeros((len(users), n_items), dtype=float)
+        for event in concession_interactions:
+            uid = int(event.get("user_id", 0))
+            cid = int(event.get("concession_id", 0))
+            if uid in user_index and cid in item_ids:
+                matrix[user_index[uid], item_ids[cid]] += max(0.0, float(event.get("weight", 1)))
+
+        t_idx = user_index[target_user_id]
+        target_vec = np.log1p(matrix[t_idx])
+        if target_vec.sum() > 0:
+            logged = np.log1p(matrix)
+
+            # Item-based collaborative filtering: cosine similarity across users.
+            item_sim = cosine_similarity(logged.T)
+            np.fill_diagonal(item_sim, 0.0)
+            item_sim = np.maximum(item_sim, 0.0)
+            item_num = target_vec @ item_sim
+            item_den = item_sim.sum(axis=0)
+            item_cf = np.divide(item_num, item_den, out=np.zeros(n_items, dtype=float), where=item_den > 0)
+
+            # User-based collaborative filtering: weighted preferences of similar buyers.
+            user_sim = cosine_similarity(logged[t_idx:t_idx + 1], logged)[0]
+            user_sim[t_idx] = 0.0
+            user_sim = np.maximum(user_sim, 0.0)
+            user_cf = (user_sim @ logged) / user_sim.sum() if user_sim.sum() > 0 else np.zeros(n_items, dtype=float)
+
+            cf_scores = 0.6 * scale(item_cf) + 0.4 * scale(user_cf)
+
+    has_cf = bool(cf_scores.max() > 0)
+    has_affinity = bool(affinity.max() > 0)
+    if has_cf:
+        scores = 0.55 * scale(cf_scores) + 0.30 * scale(affinity) + 0.15 * scale(popularity)
+    elif has_affinity:
+        scores = 0.75 * scale(affinity) + 0.25 * scale(popularity)
+    else:
+        scores = scale(popularity)
+
+    ranked = sorted(
+        range(n_items),
+        key=lambda i: (-float(scores[i]), -float(cf_scores[i]), -float(affinity[i]), -float(popularity[i]), int(concessions[i]["id"])),
+    )
+
+    items = []
+    for i in ranked[:limit]:
+        if cf_scores[i] > 0 and affinity[i] <= 0:
+            reason = "Khách hàng có gu tương tự thường chọn"
+        elif affinity[i] > 0:
+            reason = "Phù hợp lịch sử mua của bạn"
+        else:
+            reason = "Combo được yêu thích"
+        items.append({
+            "id": int(concessions[i]["id"]),
+            "score": round(float(np.clip(scores[i], 0.0, 1.0)), 5),
+            "reason": reason,
+        })
+    return items
+
+
 def recommend(payload: dict, tuning: dict | None = None, content=None) -> dict:
     tuning = tuning or {}
     weights = np.asarray(tuning.get("weights", [.55, .35, .10]), dtype=float)
@@ -375,8 +463,13 @@ def recommend(payload: dict, tuning: dict | None = None, content=None) -> dict:
                         "reason": "Phù hợp với các phim bạn quan tâm" if personalized else "Được nhiều khán giả lựa chọn"})
         if len(results) >= payload.get("limit", 6):
             break
-    concessions = sorted(payload.get("concessions", []), key=lambda c: (-float(c.get("affinity", 0)), -float(c.get("popularity", 0)), int(c["id"])))
-    return {"movies": results, "concessions": [{"id": int(c["id"]), "reason": "Phù hợp lịch sử mua của bạn" if float(c.get("affinity", 0)) else "Combo được yêu thích"} for c in concessions[:3]],
+    concessions = recommend_concessions(
+        payload.get("concessions", []),
+        payload.get("concession_interactions", []),
+        target,
+        limit=3,
+    )
+    return {"movies": results, "concessions": concessions,
             "mode": "hybrid" if personalized else "cold_start", "model": "hybrid-tfidf-collaborative-svd"}
 
 

@@ -1,14 +1,10 @@
-# Optional local-development overlay. Not loaded by the default or deployment stack.
-# AI_SERVICE_KEY must be explicitly configured before using this file.
+# Compatibility overlay: the `ai` service is now included directly in docker.yml
+# and docker-compose.deploy.yml so `docker compose -f docker.yml up -d` starts it automatically.
 services:
   ai:
-    profiles: [ai]
-    build: ./ai-service
-    restart: unless-stopped
     environment:
       AI_SERVICE_KEY: ${AI_SERVICE_KEY:?Set a private AI_SERVICE_KEY before starting AI}
       OMP_NUM_THREADS: "1"
-    expose: ["8001"]
 
   app:
     environment:

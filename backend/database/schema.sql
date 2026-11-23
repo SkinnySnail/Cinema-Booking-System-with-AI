@@ -549,6 +549,22 @@ CREATE TABLE system_configs (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Bảng Lưu Lịch Sử Chat AI (dữ liệu cá nhân, có thời hạn tự động xóa)
+CREATE TABLE ai_chat_messages (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL COMMENT 'FK -> users (chỉ lưu lịch sử của người dùng đã đăng nhập)',
+    user_message TEXT NOT NULL,
+    assistant_reply TEXT NOT NULL,
+    intent VARCHAR(50) NULL,
+    model VARCHAR(120) NULL,
+    links_json JSON NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL COMMENT 'Thời điểm tự động xóa dữ liệu cá nhân',
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_ai_chat_user_created (user_id, created_at DESC),
+    INDEX idx_ai_chat_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ============================================
 -- DỮ LIỆU MẶC ĐỊNH: ROLES, MEMBERSHIPS, PERMISSIONS
 -- ============================================
@@ -829,6 +845,8 @@ BEGIN
         WHERE t.booking_id = b.id 
         AND t.status IN ('HOLDING', 'SOLD')
     );
+    -- Dọn lịch sử chat AI đã quá hạn lưu trữ
+    DELETE FROM ai_chat_messages WHERE expires_at <= NOW();
 END$$
 DELIMITER ;
 

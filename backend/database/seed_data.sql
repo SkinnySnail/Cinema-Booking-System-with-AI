@@ -616,6 +616,7 @@ INSERT INTO system_configs (config_key, config_value, description) VALUES
 ('min_vietnamese_quota', '15', 'Tỷ lệ phim Việt tối thiểu (%)'),
 ('seat_hold_duration', '300', 'Thời gian giữ ghế (giây) - 5 phút'),
 ('max_seats_per_booking', '8', 'Số ghế tối đa trong một đơn đặt vé'),
+('ai_chat_history_retention_days', '30', 'Số ngày lưu lịch sử chat AI trước khi tự động xóa'),
 ('cleanup_duration', '15', 'Thời gian dọn phòng giữa 2 suất chiếu (phút)'),
 ('curfew_u13', '22:00:00', 'Giờ giới nghiêm cho dưới 13 tuổi'),
 ('curfew_u16', '23:00:00', 'Giờ giới nghiêm cho dưới 16 tuổi'),

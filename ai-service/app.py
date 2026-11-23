@@ -45,6 +45,7 @@ class RecommendationRequest(Payload):
     movies: list[dict] = Field(max_length=500)
     interactions: list[dict] = Field(default_factory=list, max_length=10000)
     concessions: list[dict] = Field(default_factory=list, max_length=200)
+    concession_interactions: list[dict] = Field(default_factory=list, max_length=10000)
     user_id: int = 0
     movie_id: int = 0
     limit: int = Field(default=6, ge=1, le=12)

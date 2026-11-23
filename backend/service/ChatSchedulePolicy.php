@@ -9,11 +9,12 @@ class ChatSchedulePolicy {
         'ai_chat_empty_result_policy' => 'suggest_alternatives',
         'ai_chat_context_ttl_minutes' => 15,
         'ai_chat_ambiguity_policy' => 'clarify',
+        'ai_chat_history_retention_days' => 30,
     ];
 
     public static function validationErrors(array $settings): array {
         $errors=[];
-        foreach (['ai_chat_schedule_days'=>7,'ai_chat_showtimes_per_day'=>20,'ai_chat_context_ttl_minutes'=>120] as $key=>$max) {
+        foreach (['ai_chat_schedule_days'=>7,'ai_chat_showtimes_per_day'=>20,'ai_chat_context_ttl_minutes'=>120,'ai_chat_history_retention_days'=>365] as $key=>$max) {
             if (!array_key_exists($key,$settings)) continue;
             $value=$settings[$key];
             if ((!is_int($value) && !(is_string($value) && ctype_digit($value))) || (int)$value<1 || (int)$value>$max) {

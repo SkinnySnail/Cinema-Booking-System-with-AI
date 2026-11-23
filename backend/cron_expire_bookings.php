@@ -11,6 +11,7 @@ Env::load(__DIR__ . '/.env');
 require_once __DIR__ . '/config/Database.php';
 require_once __DIR__ . '/service/PusherService.php';
 require_once __DIR__ . '/models/Booking.php';
+require_once __DIR__ . '/models/AIChatHistory.php';
 
 $db = Database::getInstance()->getConnection();
 $bookingModel = new Booking($db);
@@ -18,4 +19,11 @@ $bookingModel = new Booking($db);
 $expireMinutes = 10; // Hết hạn sau 10 phút
 $count = $bookingModel->expireStaleBookings($expireMinutes);
 
-echo date('Y-m-d H:i:s') . " - Expired $count stale booking(s).\n";
+$purgedChats = 0;
+try {
+    $purgedChats = (new AIChatHistory($db))->purgeExpired();
+} catch (Throwable $e) {
+    error_log('Purge expired AI chat history failed: ' . $e->getMessage());
+}
+
+echo date('Y-m-d H:i:s') . " - Expired $count stale booking(s), purged $purgedChats expired AI chat message(s).\n";

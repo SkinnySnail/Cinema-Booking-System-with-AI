@@ -79,7 +79,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Docker Compose is unavailable.' }
 
     # Fixed container names in docker.yml must belong to the same local project.
-    foreach ($container in @('galaxy_cinema_db', 'galaxy_cinema_app', 'galaxy_cinema_frontend')) {
+    foreach ($container in @('galaxy_cinema_db', 'galaxy_cinema_ai', 'galaxy_cinema_app', 'galaxy_cinema_frontend')) {
         $raw = & $docker ps -a --filter "name=^/$container`$" --format '{{.Names}}'
         if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect existing containers.' }
         if ($raw) {
@@ -90,9 +90,9 @@ try {
         }
     }
     if (!$env:AI_SERVICE_KEY) {
-        $aiName = & $docker ps -a --filter "name=^/$projectName-ai-1`$" --format '{{.Names}}'
+        $aiName = & $docker ps -a --filter "name=^/galaxy_cinema_ai`$" --format '{{.Names}}'
         if ($aiName) {
-            $existing = (& $docker inspect "$projectName-ai-1" | ConvertFrom-Json)[0]
+            $existing = (& $docker inspect 'galaxy_cinema_ai' | ConvertFrom-Json)[0]
             $keyEntry = $existing.Config.Env | Where-Object { $_.StartsWith('AI_SERVICE_KEY=') } | Select-Object -First 1
             if ($keyEntry) { $env:AI_SERVICE_KEY = $keyEntry.Substring('AI_SERVICE_KEY='.Length) }
         }
@@ -127,13 +127,13 @@ try {
     }
 
     Write-Host '[4/6] Starting database, AI, backend and website...'
-    $compose = @('compose', '-p', $projectName, '-f', 'docker.yml', '-f', 'docker-compose.ai.yml', '-f', 'docker-compose.ollama.yml', '--profile', 'ai')
+    $compose = @('compose', '-p', $projectName, '-f', 'docker.yml', '-f', 'docker-compose.ollama.yml')
     $up = @('up', '-d')
     if (!$NoBuild) { $up += '--build' }
     & $docker @compose @up db ai app frontend
     if ($LASTEXITCODE -ne 0) { throw 'Docker startup failed. Check the output above for a port conflict or build error.' }
     Wait-Ready 'AI service' {
-        & $docker exec "$projectName-ai-1" python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)" 2>$null | Out-Null
+        & $docker exec 'galaxy_cinema_ai' python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)" 2>$null | Out-Null
         return $LASTEXITCODE -eq 0
     } 120
     $apiUrl = "http://localhost:$ApiPort"
@@ -166,7 +166,7 @@ print('Bundle ' + bundle.identifier + ' verified.', flush=True)
         $body = @{ model=$encoder; input='cinema'; keep_alive='10m'; options=@{num_ctx=512} } | ConvertTo-Json -Depth 3
         $null = Invoke-RestMethod 'http://localhost:11434/api/embed' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 120
     }
-    & $docker exec "$projectName-ai-1" python -c $warmup
+    & $docker exec 'galaxy_cinema_ai' python -c $warmup
     if ($LASTEXITCODE -ne 0) { throw 'Trained model verification failed. Check Ollama connectivity and matching model digests.' }
     $body = @{ message='Lich chieu ngay mai' } | ConvertTo-Json
     $chat = Invoke-RestMethod "$apiUrl/api/ai/chat" -Method Post -ContentType 'application/json; charset=utf-8' -Body $body -TimeoutSec 30

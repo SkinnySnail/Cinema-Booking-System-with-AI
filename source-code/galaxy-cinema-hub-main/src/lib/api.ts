@@ -8,6 +8,8 @@ export const API_BASE_URL = resolveApiBase(import.meta.env.VITE_API_URL);
 export const API_ENDPOINTS = {
   AI_RECOMMENDATIONS: `${API_BASE_URL}/api/ai/recommendations`,
   AI_CHAT: `${API_BASE_URL}/api/ai/chat`,
+  AI_CHAT_HISTORY: `${API_BASE_URL}/api/ai/chat/history`,
+  AI_CHAT_HISTORY_ITEM: (id: number) => `${API_BASE_URL}/api/ai/chat/history/${id}`,
   AI_SENTIMENT: `${API_BASE_URL}/api/ai/reviews/sentiment`,
   // Auth
   SEND_VERIFICATION: `${API_BASE_URL}/api/auth/send-verification`,
