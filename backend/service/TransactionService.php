@@ -86,6 +86,15 @@ class TransactionService
             ];
         }
 
+        // Số tiền cổng báo về phải khớp giao dịch (MoMo: VND, VNPay: VND × 100).
+        $expectedAmount = (int) round((float) ($transaction['amount'] ?? 0));
+        $reportedAmount = $gateway === 'VNPay'
+            ? (isset($data['vnp_Amount']) ? (int) $data['vnp_Amount'] / 100 : null)
+            : (isset($data['amount']) ? (int) $data['amount'] : null);
+        if ($reportedAmount !== null && (int) round($reportedAmount) !== $expectedAmount) {
+            throw new Exception('Payment amount does not match the transaction', 400);
+        }
+
         $status = $data['status'] ?? $data['resultCode'] ?? $data['vnp_ResponseCode'] ?? null;
         $isSuccess = $this->isSuccessStatus($gateway, $status);
         $newStatus = $isSuccess ? 'Success' : 'Failed';
@@ -213,8 +222,10 @@ class TransactionService
             // receives a new vnp_TxnRef and doesn't reject it as a duplicate.
             $prefix = strtoupper(preg_replace('/\s+/', '', $gateway));
             $newCode = $prefix . '-' . date('ymdHis') . '-' . substr(uniqid(), -6);
-            $this->transactionModel->updateTransactionCode($transaction['transaction_code'], $newCode);
+            // Cập nhật cả cổng và số tiền: đơn có thể đã đổi ghế/voucher hoặc đổi từ MoMo sang VNPay.
+            $this->transactionModel->renewPending($transaction['transaction_code'], $newCode, $gateway, $amount);
             $transaction['transaction_code'] = $newCode;
+            $transaction['amount'] = $amount;
         }
 
         $payload = $this->buildPaymentPayload(
@@ -380,7 +391,9 @@ class TransactionService
             if ($isPos) {
                 $returnUrl = getenv('MOMO_POS_RETURN_URL') ?: 'https://momo.vn/';
             } else {
-                $returnUrl = getenv('MOMO_RETURN_URL') ?: $baseUrl;
+                // Quay về backend để xác minh chữ ký + xác nhận đơn, sau đó backend chuyển sang
+                // FRONTEND_URL/booking/success|failed (giống VNPay).
+                $returnUrl = getenv('MOMO_RETURN_URL') ?: ($baseUrl . '/index.php/api/transactions/momo/verify');
             }
             return [
                 'amount' => $amount,

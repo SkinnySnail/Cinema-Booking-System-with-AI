@@ -94,6 +94,23 @@ class Transaction {
         ]);
     }
 
+    /**
+     * Gắn lại giao dịch Pending với lần thanh toán mới: mã mới, cổng và số tiền hiện tại của đơn.
+     */
+    public function renewPending($oldCode, $newCode, $method, $amount) {
+        $stmt = $this->db->prepare(
+            "UPDATE transactions
+             SET transaction_code = :new_code, payment_method = :method, amount = :amount
+             WHERE transaction_code = :old_code AND status = 'Pending'"
+        );
+        return $stmt->execute([
+            ':new_code' => $newCode,
+            ':method' => $method,
+            ':amount' => $amount,
+            ':old_code' => $oldCode,
+        ]);
+    }
+
     private function generateTransactionCode($method, $bookingId) {
         $prefix = strtoupper(preg_replace('/\s+/', '', $method));
         $random = strtoupper(substr(md5(uniqid((string)$bookingId, true)), 0, 6));

@@ -64,31 +64,38 @@ class TransactionController extends BaseController
         Response::success($transaction);
     }
 
+    /**
+     * MoMo:
+     * - GET  = redirectUrl: trình duyệt người dùng quay về sau khi thanh toán → xác minh rồi chuyển sang trang kết quả.
+     * - POST = ipnUrl: máy chủ MoMo báo kết quả → trả 204 (theo đặc tả MoMo).
+     */
     public function verifyMomo()
     {
-        $data = array_merge($_GET, self::getRequestData());
+        $data = array_merge($_GET, (array) self::getRequestData());
+        $isPost = (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST');
 
         try {
             $result = $this->transactionService->processGatewayVerification('Momo', $data);
-            if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+            if ($isPost) {
                 http_response_code(204);
                 exit;
             }
-            Response::success($result, 'Momo verification processed');
+            $this->redirectToPaymentResult('Momo', $result, $data['orderId'] ?? null,
+                isset($data['resultCode']) ? ['resultCode' => (string) $data['resultCode']] : []);
         } catch (Exception $e) {
             error_log('MoMo verify error: ' . $e->getMessage());
-            if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+            if ($isPost) {
                 http_response_code(400);
                 echo json_encode(['message' => $e->getMessage()]);
                 exit;
             }
-            Response::error($e->getMessage(), $e->getCode() ?: 400);
+            $this->redirectToPaymentResult('Momo', null, $data['orderId'] ?? null);
         }
     }
 
     public function verifyVNPay()
     {
-        $data = array_merge($_GET, self::getRequestData());
+        $data = array_merge($_GET, (array) self::getRequestData());
 
         $isGet = (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET');
 
@@ -96,83 +103,66 @@ class TransactionController extends BaseController
             $result = $this->transactionService->processGatewayVerification('VNPay', $data);
 
             if ($isGet) {
-                $frontendUrl = getenv('FRONTEND_URL') ?: 'http://localhost:8080';
-                $transactionCode = $result['transaction_code'] ?? ($data['vnp_TxnRef'] ?? null);
-                $status = $result['status'] ?? 'Failed';
-                $bookingId = $result['booking_id'] ?? null;
-
-                $isPos = false;
-                if ($bookingId) {
-                    $booking = $this->transactionService->getBookingById((int)$bookingId);
-                    if ($booking && !empty($booking['guest_customer_id'])) {
-                        $isPos = true;
-                    }
-                }
-
-                // Nếu giao dịch thất bại (user hủy, quay lại, lỗi), redirect sang trang thất bại
-                if ($status !== 'Success') {
-                    $returnUrl = $frontendUrl . '/booking/failed';
-                    $params = ['status' => 'Failed', 'gateway' => 'VNPay'];
-                    if ($isPos) {
-                        $params['is_pos'] = '1';
-                    }
-                    if ($transactionCode) {
-                        $params['transaction_code'] = $transactionCode;
-                    }
-                    $location = $returnUrl . '?' . http_build_query($params);
-                    header('Location: ' . $location);
-                    exit;
-                }
-
-                // Giao dịch thành công — redirect sang trang thành công
-                $returnUrl = $frontendUrl . '/booking/success';
-                $params = [
-                    'transaction_code' => $transactionCode,
-                    'status' => $status,
-                    'gateway' => 'VNPay'
-                ];
-                if ($isPos) {
-                    $params['is_pos'] = '1';
-                }
-                if ($bookingId) {
-                    $params['booking_id'] = $bookingId;
-                }
-                if (!empty($data['vnp_ResponseCode'])) {
-                    $params['vnp_ResponseCode'] = $data['vnp_ResponseCode'];
-                }
-
-                $location = $returnUrl . '?' . http_build_query($params);
-                header('Location: ' . $location);
-                exit;
+                $this->redirectToPaymentResult('VNPay', $result, $data['vnp_TxnRef'] ?? null,
+                    !empty($data['vnp_ResponseCode']) ? ['vnp_ResponseCode' => $data['vnp_ResponseCode']] : []);
             }
 
             Response::success($result, 'VNPay verification processed');
         } catch (Exception $e) {
             if ($isGet) {
-                // Redirect user to the frontend booking failed page on failure
-                $frontendUrl = getenv('FRONTEND_URL') ?: 'http://localhost:8080';
-                $returnUrl = $frontendUrl . '/booking/failed';
-                $params = ['status' => 'Failed', 'gateway' => 'VNPay'];
-                $txnRef = $data['vnp_TxnRef'] ?? null;
-                if ($txnRef) {
-                    try {
-                        $stmt = $this->db->prepare("SELECT b.guest_customer_id FROM transactions t JOIN bookings b ON b.id = t.booking_id WHERE t.transaction_code = :code LIMIT 1");
-                        $stmt->execute([':code' => $txnRef]);
-                        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-                        if ($row && !empty($row['guest_customer_id'])) {
-                            $params['is_pos'] = '1';
-                        }
-                    } catch (Exception $ex) {
-                        // ignore
-                    }
-                }
-                $location = $returnUrl . '?' . http_build_query($params);
-                header('Location: ' . $location);
-                exit;
+                $this->redirectToPaymentResult('VNPay', null, $data['vnp_TxnRef'] ?? null);
             }
 
             Response::error($e->getMessage(), $e->getCode() ?: 400);
         }
+    }
+
+    /**
+     * Chuyển trình duyệt về trang kết quả của frontend (FRONTEND_URL/booking/success|failed).
+     * $result = null khi xác minh thất bại (sai chữ ký, không tìm thấy giao dịch...).
+     */
+    private function redirectToPaymentResult($gateway, $result, $transactionCode, array $extra = [])
+    {
+        $frontendUrl = rtrim(getenv('FRONTEND_URL') ?: 'http://localhost:8080', '/');
+        $transactionCode = $result['transaction_code'] ?? $transactionCode;
+        $bookingId = $result['booking_id'] ?? null;
+        $status = $result['status'] ?? 'Failed';
+
+        $isPos = false;
+        try {
+            if ($bookingId) {
+                $booking = $this->transactionService->getBookingById((int) $bookingId);
+                $isPos = $booking && !empty($booking['guest_customer_id']);
+            } elseif ($transactionCode) {
+                $stmt = $this->db->prepare("SELECT b.guest_customer_id FROM transactions t JOIN bookings b ON b.id = t.booking_id WHERE t.transaction_code = :code LIMIT 1");
+                $stmt->execute([':code' => $transactionCode]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                $isPos = $row && !empty($row['guest_customer_id']);
+            }
+        } catch (Exception $ex) {
+            // POS flag is cosmetic; ignore lookup errors.
+        }
+
+        if ($status === 'Success') {
+            $path = '/booking/success';
+            $params = ['transaction_code' => $transactionCode, 'status' => $status, 'gateway' => $gateway];
+            if ($bookingId) {
+                $params['booking_id'] = $bookingId;
+            }
+            $params += $extra;
+        } else {
+            $path = '/booking/failed';
+            $params = ['status' => 'Failed', 'gateway' => $gateway];
+            if ($transactionCode) {
+                $params['transaction_code'] = $transactionCode;
+            }
+        }
+        if ($isPos) {
+            $params['is_pos'] = '1';
+        }
+
+        header('Location: ' . $frontendUrl . $path . '?' . http_build_query($params));
+        exit;
     }
 
     // IPN endpoint for VNPay (server-to-server callback, sent as GET).

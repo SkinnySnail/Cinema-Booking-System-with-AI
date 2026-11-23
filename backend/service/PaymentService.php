@@ -236,7 +236,8 @@ class PaymentService
                    hash_equals(strtolower($calc2), strtolower($secureHash));
 
         if (!$isValid) {
-            error_log('VNPay signature verification failed: calc1=' . $calc1 . ' calc2=' . $calc2 . ' provided=' . $secureHash);
+            // Không ghi chữ ký tự tính vào log: nó đủ để giả mạo đúng thông điệp này.
+            error_log('VNPay signature verification failed for vnp_TxnRef=' . (string) ($data['vnp_TxnRef'] ?? ''));
         }
 
         return $isValid;
