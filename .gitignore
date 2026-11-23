@@ -1,6 +1,10 @@
 # Env files
 .env
 backend/.env
+.env.bak.*
+
+# Local secrets
+backend/.jwt_secret
 
 # Dependencies
 /vendor/
@@ -33,3 +37,6 @@ Thumbs.db
 # Testing guides (generated/temporary docs)
 backend/POSTMAN_TESTING_GUIDE.md
 source-code/galaxy-cinema-hub-main/TESTING_QUICKSTART.md
+
+# Tokens dumped by local scripts
+backend/scripts/admin_token.txt
