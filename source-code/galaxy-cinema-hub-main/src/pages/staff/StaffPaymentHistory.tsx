@@ -11,6 +11,7 @@ import {
   Download,
 } from "lucide-react";
 import { API_ENDPOINTS, apiCall } from "@/lib/api";
+import { qrDataUrl } from "@/lib/qr";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AppContext";
 import StaffAccessDenied from "@/components/staff/StaffAccessDenied";
@@ -227,7 +228,7 @@ const StaffPaymentHistory: React.FC = () => {
     XLSX.writeFile(workbook, `lich-su-thanh-toan-${exportDate}.xlsx`);
   };
 
-  const printReceipt = (booking: BookingDetailResponse["data"]) => {
+  const printReceipt = async (booking: BookingDetailResponse["data"]) => {
     const ticketRowsHtml =
       booking.tickets && booking.tickets.length > 0
         ? booking.tickets
@@ -242,9 +243,10 @@ const StaffPaymentHistory: React.FC = () => {
             .join("")
         : `<tr><td colspan="3" style="padding:8px 0; color:#666;">Không có dữ liệu vé</td></tr>`;
 
+    const qrSrc = await qrDataUrl(booking.booking_code, 200);
     const qrImagesHtml = `
       <div style="text-align:center; margin:10px 0; page-break-inside:avoid;">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(booking.booking_code)}" style="width:200px;height:200px;border:1px solid #ddd;padding:6px;" />
+        <img src="${qrSrc}" style="width:200px;height:200px;border:1px solid #ddd;padding:6px;" />
         <div style="font-family:monospace; font-size:12px; margin-top:6px;"><b>${booking.booking_code}</b></div>
       </div>
     `;
@@ -340,7 +342,7 @@ const StaffPaymentHistory: React.FC = () => {
       );
 
       if (bookingDetail?.data) {
-        printReceipt(bookingDetail.data);
+        await printReceipt(bookingDetail.data);
       }
     } catch (error) {
       const message =

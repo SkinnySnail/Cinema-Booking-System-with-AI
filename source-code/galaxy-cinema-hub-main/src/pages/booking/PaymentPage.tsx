@@ -619,8 +619,6 @@ const PaymentPage: React.FC = () => {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const buildQrImageUrl = (payUrl: string) =>
-    `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(payUrl)}`;
 
   const normalizeQrPayload = (value: string) => {
     const raw = value.trim();

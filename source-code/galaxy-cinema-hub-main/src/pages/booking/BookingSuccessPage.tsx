@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { API_ENDPOINTS, API_BASE_URL } from "@/lib/api-config";
+import { useQrDataUrl } from "@/lib/qr";
 import { useAuth } from "@/contexts/AppContext";
 
 const BookingSuccessPage: React.FC = () => {
@@ -173,9 +174,7 @@ const BookingSuccessPage: React.FC = () => {
 
   const activeTicketCode = bookingCode || ticketCode || null;
 
-  const qrImageUrl = activeTicketCode
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(activeTicketCode)}`
-    : null;
+  const qrImageUrl = useQrDataUrl(activeTicketCode, 320);
 
   const getSeatCode = (seat: any, idx: number) => {
     if (!seat) return `Ghế ${idx + 1}`;

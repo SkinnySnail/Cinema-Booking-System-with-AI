@@ -76,7 +76,6 @@ interface BackendReview {
   status: string;
   created_at: string;
   updated_at: string;
-  email: string;
   full_name: string | null;
   avatar: string | null;
 }
@@ -385,10 +384,10 @@ const MovieDetailPage: React.FC = () => {
         const mappedReviews = response.data.reviews.map((r) => ({
           id: r.id.toString(),
           userId: r.user_id,
-          userName: r.full_name || r.email.split("@")[0],
-          userAvatar:
-            r.avatar ||
-            `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.email}`,
+          // Public reviews no longer include the reviewer's email; the avatar
+          // falls back to initials instead of a third-party avatar service.
+          userName: r.full_name || "Khách hàng",
+          userAvatar: r.avatar || "",
           rating: r.rating,
           comment: r.comment,
           createdAt: r.created_at,

@@ -442,8 +442,8 @@ class Movie {
         try {
             $offset = ($page - 1) * $limit;
             
-            $query = "SELECT r.*, 
-                      u.email,
+            // Public endpoint: never expose reviewer emails.
+            $query = "SELECT r.*,
                       up.full_name,
                       up.avatar
                       FROM reviews r

@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { systemConfig } from "@/data/mockData";
 import { API_ENDPOINTS, apiCall } from "@/lib/api";
+import { qrDataUrl } from "@/lib/qr";
 import { getPusherClient } from "@/lib/pusher";
 import { useAuth } from "@/contexts/AppContext";
 import { CustomerService } from "@/services/customer.service";
@@ -492,7 +493,7 @@ const StaffPOS: React.FC = () => {
         );
 
         if (bookingDetail?.data) {
-          printReceipt(bookingDetail.data);
+          await printReceipt(bookingDetail.data);
         }
 
         toast({
@@ -805,7 +806,7 @@ const StaffPOS: React.FC = () => {
     );
   };
 
-  function printReceipt(
+  async function printReceipt(
     booking: BookingDetailResponse["data"],
     method: PaymentMethod = "CASH",
   ) {
@@ -828,9 +829,10 @@ const StaffPOS: React.FC = () => {
         : `<tr><td colspan="3" style="padding:8px 0; color:#666;">Không có dữ liệu vé</td></tr>`;
 
     // Generate only ONE QR code per booking (for staff verification)
+    const qrSrc = await qrDataUrl(booking.booking_code, 200);
     const qrImagesHtml = `
       <div style="text-align:center; margin:10px 0; page-break-inside:avoid;">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(booking.booking_code)}" style="width:200px;height:200px;border:1px solid #ddd;padding:6px;" />
+        <img src="${qrSrc}" style="width:200px;height:200px;border:1px solid #ddd;padding:6px;" />
         <div style="font-family:monospace; font-size:12px; margin-top:6px;"><b>${booking.booking_code}</b></div>
       </div>
     `;
@@ -927,7 +929,7 @@ const StaffPOS: React.FC = () => {
       );
 
       if (bookingDetail?.data) {
-        printReceipt(bookingDetail.data);
+        await printReceipt(bookingDetail.data);
         toast({
           title: "Đã in lại vé",
           description: `In lại vé thành công cho đơn #${bookingId}.`,
@@ -1035,8 +1037,9 @@ const StaffPOS: React.FC = () => {
 
         const payUrl = vnpayResponse.data?.pay_url;
         const qrCodeUrl = vnpayResponse.data?.qr_code_url;
+        // Draw the payment QR locally: the signed VNPay link is not sent to a third party.
         const generatedQrCode = payUrl
-          ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(payUrl)}`
+          ? await qrDataUrl(payUrl, 250)
           : undefined;
 
         paymentHandledRef.current = false;
@@ -1065,7 +1068,7 @@ const StaffPOS: React.FC = () => {
         );
 
         if (bookingDetail?.data) {
-          printReceipt(bookingDetail.data, "CASH");
+          await printReceipt(bookingDetail.data, "CASH");
         }
 
         toast({

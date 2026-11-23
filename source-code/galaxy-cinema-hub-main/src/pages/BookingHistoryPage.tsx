@@ -33,6 +33,7 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { useAuth } from "@/contexts/AppContext";
 import { API_ENDPOINTS, getImageUrl } from "@/lib/api";
+import { qrDataUrl } from "@/lib/qr";
 import { useToast } from "@/hooks/use-toast";
 
 interface SeatDetail {
@@ -262,12 +263,20 @@ const BookingHistoryPage: React.FC = () => {
                 paymentMethod: paymentMethodText,
                 bookingDate: booking.created_at,
                 ticketCodes: bookingLevelTicketCodes,
-                qrCode: `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrPayload)}`,
               };
             },
           );
 
-        setBookings(mappedBookings);
+        // Draw QR images locally (ticket codes are not sent to a QR web service).
+        const bookingsWithQr = await Promise.all(
+          mappedBookings.map(async (b) => ({
+            ...b,
+            qrCode: b.ticketCodes?.[0]
+              ? await qrDataUrl(b.ticketCodes[0], 240)
+              : undefined,
+          })),
+        );
+        setBookings(bookingsWithQr);
       } catch (error) {
         console.error("Error fetching bookings:", error);
       } finally {
