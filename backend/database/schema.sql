@@ -473,7 +473,7 @@ CREATE TABLE booking_concessions (
 CREATE TABLE transactions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     booking_id INT NOT NULL,
-    payment_method VARCHAR(50) NOT NULL COMMENT 'Momo/Card/Cash',
+    payment_method VARCHAR(50) NOT NULL COMMENT 'VNPay/Visa/Cash',
     amount DECIMAL(10,2) NOT NULL,
     transaction_code VARCHAR(100) UNIQUE,
     status ENUM('Pending', 'Success', 'Failed') DEFAULT 'Pending',

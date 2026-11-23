@@ -10,6 +10,8 @@ const backendProxy = { target: proxyTarget, changeOrigin: true };
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  // Load root .env directly when running Vite outside Docker; in Docker, VITE_* come from docker.yml environment.
+  envDir: path.resolve(__dirname, "../.."),
   server: {
     host: "::",
     port: 8080,

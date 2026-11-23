@@ -91,11 +91,9 @@ export const API_ENDPOINTS = {
   // Transactions
   TRANSACTIONS: {
     CREATE: "/transactions",
-    MOMO: "/transactions/momo",
     VNPAY: "/transactions/vnpay",
     VISA: "/transactions/visa",
     CASH: "/transactions/cash",
-    MOMO_VERIFY: "/transactions/momo/verify",
     VNPAY_VERIFY: "/transactions/vnpay/verify",
     BY_BOOKING: (bookingId: string) => `/transactions/booking/${bookingId}`,
     USER_HISTORY: (userId: string) => `/transactions/user/${userId}`,

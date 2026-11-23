@@ -56,12 +56,8 @@ class Config
     public static $redis_host = 'localhost';
     public static $redis_port = 6379;
 
-    // Payment Gateway Settings — khóa lấy từ biến môi trường (MOMO_*, VNP_*).
+    // Payment Gateway Settings — khóa lấy từ biến môi trường (VNP_*).
     // Thiếu khóa thì PaymentService báo "Missing payment config" thay vì dùng khóa mặc định.
-    public static $momo_partner_code = '';
-    public static $momo_access_key = '';
-    public static $momo_secret_key = '';
-
     public static $vnpay_tmncode = '';
     public static $vnpay_hash_secret = '';
     public static $vnpay_url = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
@@ -106,15 +102,6 @@ class Config
         }
 
         // Load payment gateway config from environment if available
-        if (getenv('MOMO_PARTNER_CODE')) {
-            self::$momo_partner_code = getenv('MOMO_PARTNER_CODE');
-        }
-        if (getenv('MOMO_ACCESS_KEY')) {
-            self::$momo_access_key = getenv('MOMO_ACCESS_KEY');
-        }
-        if (getenv('MOMO_SECRET_KEY')) {
-            self::$momo_secret_key = getenv('MOMO_SECRET_KEY');
-        }
         if (getenv('VNP_TMNCODE')) {
             self::$vnpay_tmncode = getenv('VNP_TMNCODE');
         }
@@ -134,9 +121,6 @@ class Config
         // Define payment gateway constants for PaymentService.
         // Bỏ qua giá trị rỗng để PaymentService báo thiếu cấu hình thay vì ký bằng khóa rỗng.
         $paymentConstants = [
-            'MOMO_PARTNER_CODE' => self::$momo_partner_code,
-            'MOMO_ACCESS_KEY' => self::$momo_access_key,
-            'MOMO_SECRET_KEY' => self::$momo_secret_key,
             'VNP_TMNCODE' => self::$vnpay_tmncode,
             'VNP_HASH_SECRET' => self::$vnpay_hash_secret,
             'VNP_URL' => self::$vnpay_url,
@@ -158,7 +142,7 @@ class Config
     /**
      * Khóa ký JWT: ưu tiên JWT_SECRET. Nếu chưa cấu hình (hoặc vẫn là giá trị mẫu đã công khai),
      * tự sinh một khóa ngẫu nhiên và lưu vào backend/.jwt_secret (đã gitignore) để dùng ổn định
-     * giữa các request trên máy phát triển. Production nên đặt JWT_SECRET trong backend/.env.
+     * giữa các request trên máy phát triển. Production nên đặt JWT_SECRET trong file .env ở thư mục gốc.
      */
     private static function loadJwtSecret()
     {

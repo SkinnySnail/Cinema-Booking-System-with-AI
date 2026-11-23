@@ -5,7 +5,7 @@
 # 1. Put these in the root .env (gitignored):
 #      NGROK_AUTHTOKEN=<token from https://dashboard.ngrok.com/get-started/your-authtoken>
 #      NGROK_DOMAIN=<your-name>.ngrok-free.app   (https://dashboard.ngrok.com/domains)
-# 2. In backend/.env set APP_URL and FRONTEND_URL to https://<NGROK_DOMAIN>
+# 2. In the root .env set APP_URL and FRONTEND_URL to https://<NGROK_DOMAIN>
 # 3. docker compose -f docker.yml -f docker-compose.ngrok.yml up -d
 #    Stop only the tunnel: docker compose -f docker.yml -f docker-compose.ngrok.yml stop ngrok
 #

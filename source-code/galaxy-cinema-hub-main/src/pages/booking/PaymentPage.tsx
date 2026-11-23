@@ -132,13 +132,12 @@ const PaymentPage: React.FC = () => {
   const { pauseHoldTimer, resumeHoldTimer } = useBooking();
   const { theme } = useTheme();
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("momo");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("atm");
   const [promoCode, setPromoCode] = useState("");
   const [discount, setDiscount] = useState(0);
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrTimeLeft, setQRTimeLeft] = useState(300); // 5 minutes
   const [isProcessing, setIsProcessing] = useState(false);
-  const [momoQrImageUrl, setMomoQrImageUrl] = useState<string | null>(null);
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [currentBookingId, setCurrentBookingId] = useState<number | null>(null);
   const [currentBookingCode, setCurrentBookingCode] = useState<string | null>(
@@ -305,7 +304,6 @@ const PaymentPage: React.FC = () => {
 
   const resetPaymentSession = () => {
     setShowQRModal(false);
-    setMomoQrImageUrl(null);
     setPaymentUrl(null);
     setCurrentBookingId(null);
     setCurrentBookingCode(null);
@@ -360,7 +358,6 @@ const PaymentPage: React.FC = () => {
 
       // Reset modal state
       setShowQRModal(false);
-      setMomoQrImageUrl(null);
       setPaymentUrl(null);
       setCurrentBookingId(null);
       setCurrentBookingCode(null);
@@ -418,7 +415,7 @@ const PaymentPage: React.FC = () => {
   // Guard against accidental leave while waiting for payment confirmation.
   /**
    * Hoàn tất thanh toán và chuyển tới trang thành công.
-   * Dùng chung cho cổng thanh toán online (VNPay/MoMo/Visa) và tiền mặt.
+   * Dùng chung cho cổng thanh toán online (VNPay/Visa) và tiền mặt.
    *
    * `bookingId` được truyền tường minh vì khi gọi ngay sau khi tạo booking,
    * state `currentBookingId` trong closure có thể còn null (stale closure).
@@ -566,7 +563,7 @@ const PaymentPage: React.FC = () => {
       if (status === "success") {
         void completeFromGateway();
       } else if (status === "failed") {
-        handlePaymentFailed("Giao dịch MoMo bị từ chối hoặc thất bại.");
+        handlePaymentFailed("Giao dịch thanh toán bị từ chối hoặc thất bại.");
       }
     };
     channel?.bind("payment-status-updated", onPaymentUpdated);
@@ -785,31 +782,7 @@ const PaymentPage: React.FC = () => {
         }
       }
 
-      if (method === "momo") {
-        const momoResponse = await TransactionService.momoPayment({
-          booking_id: bookingId,
-        });
-        const qrCodeUrl = momoResponse?.data?.qr_code_url;
-        const payUrl = momoResponse?.data?.pay_url;
-        const qrPayload = qrCodeUrl || payUrl;
-        if (!qrPayload) {
-          await BookingService.cancel(String(bookingId));
-          setCurrentBookingId(null);
-          toast({
-            title: "Không tạo được mã QR MoMo",
-            description:
-              "Giao dịch đã được hủy vì hệ thống không trả về dữ liệu QR.",
-            variant: "destructive",
-          });
-          return;
-        }
-        setMomoQrImageUrl(buildQrImageUrl(normalizeQrPayload(qrPayload)));
-        if (payUrl) setPaymentUrl(payUrl);
-        setShowQRModal(true);
-        pauseHoldTimer();
-        setQRTimeLeft(300);
-        timeoutHandledRef.current = false;
-      } else if (method === "atm") {
+      if (method === "atm") {
         // VNPay: tạo transaction để lấy pay_url, mở popup VNPay và hiển thị màn hình chờ
         const vnpayResponse = await TransactionService.vnpayPayment({
           booking_id: bookingId,
@@ -926,7 +899,6 @@ const PaymentPage: React.FC = () => {
         setShowQRModal(false);
         setIsVnpayMode(false);
         setIsVisaMode(false);
-        setMomoQrImageUrl(null);
         setPaymentUrl(null);
         pauseHoldTimer();
 
@@ -949,7 +921,6 @@ const PaymentPage: React.FC = () => {
       }
       setCurrentBookingId(null);
       setShowQRModal(false);
-      setMomoQrImageUrl(null);
       setPaymentUrl(null);
       toast({
         title: "Thanh toán thất bại",
@@ -1056,20 +1027,11 @@ const PaymentPage: React.FC = () => {
 
   const paymentMethods = [
     {
-      value: "momo",
-      label: "Ví Điện Tử MoMo",
-      subLabel: "Quét mã QR qua ứng dụng MoMo thanh toán tức thì",
-      icon: Smartphone,
-      badge: "Phổ biến",
-      color: "bg-[#a50064] text-white",
-      ringColor: "ring-[#a50064]/20 border-[#a50064]",
-    },
-    {
       value: "atm",
       label: "Cổng Thanh Toán VNPAY",
       subLabel: "Quét mã VNPAY-QR hoặc thẻ ATM / Internet Banking hơn 40 ngân hàng",
       icon: Building2,
-      badge: "VNPAY-QR",
+      badge: "Phổ biến",
       color: "bg-[#005baa] text-white",
       ringColor: "ring-[#005baa]/20 border-[#005baa]",
     },
@@ -1718,133 +1680,106 @@ const PaymentPage: React.FC = () => {
               </div>
             </div>
             <DialogDescription>
-              {isVnpayMode
-                ? "Cửa sổ thanh toán VNPay đã được mở. Vui lòng hoàn tất thanh toán trong cửa sổ đó."
-                : isVisaMode
-                  ? "Cửa sổ thanh toán Visa đã được mở. Vui lòng chọn ngân hàng và hoàn tất thanh toán."
-                  : "Mở ứng dụng MoMo và quét mã bên dưới"}
+              {isVisaMode
+                ? "Cửa sổ thanh toán Visa đã được mở. Vui lòng chọn ngân hàng và hoàn tất thanh toán."
+                : "Cửa sổ thanh toán VNPay đã được mở. Vui lòng hoàn tất thanh toán trong cửa sổ đó."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col items-center py-6">
-            {isVnpayMode || isVisaMode ? (
-              /* VNPay / Visa waiting screen */
-              <div className="flex flex-col items-center gap-5 py-4">
-                <div className="relative w-24 h-24">
-                  <div className="absolute inset-0 rounded-full border-4 border-primary/20" />
-                  <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    {isVisaMode ? (
-                      <CreditCard className="w-10 h-10 text-primary" />
-                    ) : (
-                      <Building2 className="w-10 h-10 text-primary" />
-                    )}
-                  </div>
-                </div>
-                <div className="text-center space-y-1">
-                  <p className="text-base font-semibold">
-                    {isVisaMode
-                      ? "Đang chờ xác nhận thanh toán Visa..."
-                      : "Đang chờ xác nhận từ VNPay..."}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {isVisaMode
-                      ? "Chọn ngân hàng và hoàn tất thanh toán trong cửa sổ đã mở"
-                      : "Hoàn tất thanh toán trong cửa sổ VNPay đã mở"}
-                  </p>
-                </div>
-                {paymentUrl && (
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full h-10",
-                      isVisaMode
-                        ? "border-purple-500 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20"
-                        : "border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20",
-                    )}
-                    onClick={() => {
-                      if (isVisaMode) {
-                        if (
-                          visaPopupRef.current &&
-                          !visaPopupRef.current.closed
-                        ) {
-                          visaPopupRef.current.focus();
-                        } else {
-                          const popup = window.open(
-                            paymentUrl,
-                            "visa_popup",
-                            "width=600,height=700,scrollbars=yes,resizable=yes,left=" +
-                              Math.round((window.screen.width - 600) / 2) +
-                              ",top=" +
-                              Math.round((window.screen.height - 700) / 2),
-                          );
-                          if (popup) visaPopupRef.current = popup;
-                          else
-                            window.open(
-                              paymentUrl,
-                              "_blank",
-                              "noopener,noreferrer",
-                            );
-                        }
-                      } else {
-                        if (
-                          vnpayPopupRef.current &&
-                          !vnpayPopupRef.current.closed
-                        ) {
-                          vnpayPopupRef.current.focus();
-                        } else {
-                          const popup = window.open(
-                            paymentUrl,
-                            "vnpay_popup",
-                            "width=600,height=700,scrollbars=yes,resizable=yes,left=" +
-                              Math.round((window.screen.width - 600) / 2) +
-                              ",top=" +
-                              Math.round((window.screen.height - 700) / 2),
-                          );
-                          if (popup) vnpayPopupRef.current = popup;
-                          else
-                            window.open(
-                              paymentUrl,
-                              "_blank",
-                              "noopener,noreferrer",
-                            );
-                        }
-                      }
-                    }}
-                  >
-                    {isVisaMode
-                      ? "Mở lại cửa sổ thanh toán Visa"
-                      : "Mở lại cửa sổ VNPay"}
-                  </Button>
-                )}
-                <p className="text-xs text-muted-foreground text-center">
-                  Hệ thống tự động xác nhận sau khi cổng thanh toán phản hồi.
-                </p>
-              </div>
-            ) : (
-              /* MoMo QR screen */
-              <>
-                <div className="w-48 h-48 bg-white rounded-xl p-4 shadow-lg mb-4">
-                  {momoQrImageUrl ? (
-                    <img
-                      src={momoQrImageUrl}
-                      alt="MoMo QR"
-                      className="w-full h-full object-contain rounded-lg"
-                    />
+            {/* VNPay / Visa waiting screen */}
+            <div className="flex flex-col items-center gap-5 py-4">
+              <div className="relative w-24 h-24">
+                <div className="absolute inset-0 rounded-full border-4 border-primary/20" />
+                <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {isVisaMode ? (
+                    <CreditCard className="w-10 h-10 text-primary" />
                   ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-gray-900 to-gray-700 rounded-lg flex items-center justify-center">
-                      <QrCode className="w-24 h-24 text-white" />
-                    </div>
+                    <Building2 className="w-10 h-10 text-primary" />
                   )}
                 </div>
-                <p className="text-lg font-bold text-primary">
-                  {grandTotal.toLocaleString("vi-VN")}đ
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-base font-semibold">
+                  {isVisaMode
+                    ? "Đang chờ xác nhận thanh toán Visa..."
+                    : "Đang chờ xác nhận từ VNPay..."}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Galaxy Cinema - {movie?.title}
+                  {isVisaMode
+                    ? "Chọn ngân hàng và hoàn tất thanh toán trong cửa sổ đã mở"
+                    : "Hoàn tất thanh toán trong cửa sổ VNPay đã mở"}
                 </p>
-              </>
-            )}
+              </div>
+              {paymentUrl && (
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full h-10",
+                    isVisaMode
+                      ? "border-purple-500 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                      : "border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20",
+                  )}
+                  onClick={() => {
+                    if (isVisaMode) {
+                      if (
+                        visaPopupRef.current &&
+                        !visaPopupRef.current.closed
+                      ) {
+                        visaPopupRef.current.focus();
+                      } else {
+                        const popup = window.open(
+                          paymentUrl,
+                          "visa_popup",
+                          "width=600,height=700,scrollbars=yes,resizable=yes,left=" +
+                            Math.round((window.screen.width - 600) / 2) +
+                            ",top=" +
+                            Math.round((window.screen.height - 700) / 2),
+                        );
+                        if (popup) visaPopupRef.current = popup;
+                        else
+                          window.open(
+                            paymentUrl,
+                            "_blank",
+                            "noopener,noreferrer",
+                          );
+                      }
+                    } else {
+                      if (
+                        vnpayPopupRef.current &&
+                        !vnpayPopupRef.current.closed
+                      ) {
+                        vnpayPopupRef.current.focus();
+                      } else {
+                        const popup = window.open(
+                          paymentUrl,
+                          "vnpay_popup",
+                          "width=600,height=700,scrollbars=yes,resizable=yes,left=" +
+                            Math.round((window.screen.width - 600) / 2) +
+                            ",top=" +
+                            Math.round((window.screen.height - 700) / 2),
+                        );
+                        if (popup) vnpayPopupRef.current = popup;
+                        else
+                          window.open(
+                            paymentUrl,
+                            "_blank",
+                            "noopener,noreferrer",
+                          );
+                      }
+                    }
+                  }}
+                >
+                  {isVisaMode
+                    ? "Mở lại cửa sổ thanh toán Visa"
+                    : "Mở lại cửa sổ VNPay"}
+                </Button>
+              )}
+              <p className="text-xs text-muted-foreground text-center">
+                Hệ thống tự động xác nhận sau khi cổng thanh toán phản hồi.
+              </p>
+            </div>
           </div>
 
           <div className="border-t border-border pt-4 flex flex-col gap-3">
@@ -1858,7 +1793,6 @@ const PaymentPage: React.FC = () => {
                 // Ghế vẫn được giữ, currentBookingId vẫn còn để tái sử dụng
                 // khi user chọn phương thức khác và nhấn "Tiến hành thanh toán".
                 setShowQRModal(false);
-                setMomoQrImageUrl(null);
                 setPaymentUrl(null);
                 setIsVnpayMode(false);
                 setIsVisaMode(false);
@@ -1872,11 +1806,6 @@ const PaymentPage: React.FC = () => {
               <ArrowLeft className="w-4 h-4 mr-2" />
               Chọn phương thức thanh toán khác
             </Button>
-            {!isVnpayMode && !isVisaMode && (
-              <p className="text-xs text-muted-foreground text-center">
-                Hệ thống sẽ tự động cập nhật khi MoMo xác nhận thanh toán.
-              </p>
-            )}
             <Button
               variant="outline"
               className="w-full text-muted-foreground"

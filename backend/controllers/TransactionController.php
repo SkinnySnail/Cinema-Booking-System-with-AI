@@ -64,35 +64,6 @@ class TransactionController extends BaseController
         Response::success($transaction);
     }
 
-    /**
-     * MoMo:
-     * - GET  = redirectUrl: trình duyệt người dùng quay về sau khi thanh toán → xác minh rồi chuyển sang trang kết quả.
-     * - POST = ipnUrl: máy chủ MoMo báo kết quả → trả 204 (theo đặc tả MoMo).
-     */
-    public function verifyMomo()
-    {
-        $data = array_merge($_GET, (array) self::getRequestData());
-        $isPost = (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST');
-
-        try {
-            $result = $this->transactionService->processGatewayVerification('Momo', $data);
-            if ($isPost) {
-                http_response_code(204);
-                exit;
-            }
-            $this->redirectToPaymentResult('Momo', $result, $data['orderId'] ?? null,
-                isset($data['resultCode']) ? ['resultCode' => (string) $data['resultCode']] : []);
-        } catch (Exception $e) {
-            error_log('MoMo verify error: ' . $e->getMessage());
-            if ($isPost) {
-                http_response_code(400);
-                echo json_encode(['message' => $e->getMessage()]);
-                exit;
-            }
-            $this->redirectToPaymentResult('Momo', null, $data['orderId'] ?? null);
-        }
-    }
-
     public function verifyVNPay()
     {
         $data = array_merge($_GET, (array) self::getRequestData());
@@ -213,11 +184,6 @@ class TransactionController extends BaseController
         } catch (Exception $e) {
             Response::error($e->getMessage(), $e->getCode() ?: 400);
         }
-    }
-
-    public function createMoMoPayment()
-    {
-        $this->createPayment('Momo');
     }
 
     public function createVNPayPayment()

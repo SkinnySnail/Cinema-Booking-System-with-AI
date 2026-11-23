@@ -80,9 +80,7 @@ export const API_ENDPOINTS = {
   TRANSACTIONS: `${API_BASE_URL}/api/transactions`,
   USER_TRANSACTIONS: (userId: number) =>
     `${API_BASE_URL}/api/transactions/user/${userId}`,
-  MOMO_PAYMENT: `${API_BASE_URL}/api/transactions/momo`,
   VNPAY_PAYMENT: `${API_BASE_URL}/api/transactions/vnpay`,
-  MOMO_VERIFY: `${API_BASE_URL}/api/transactions/momo/verify`,
   VNPAY_VERIFY: `${API_BASE_URL}/api/transactions/vnpay/verify`,
 
   // Promotions & Vouchers

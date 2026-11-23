@@ -70,7 +70,7 @@ interface SeatMapResponse {
   };
 }
 
-type PaymentMethod = "CASH" | "VNPAY" | "MOMO";
+type PaymentMethod = "CASH" | "VNPAY";
 
 interface BookingDetailResponse {
   success: boolean;
@@ -103,7 +103,7 @@ interface QrPaymentState {
   payUrl?: string;
   qrCodeUrl?: string;
   generatedQrCode?: string; // QR generated from payUrl
-  gateway: "VNPAY" | "MOMO";
+  gateway: "VNPAY";
 }
 
 interface ProcessedSeat {
@@ -809,12 +809,7 @@ const StaffPOS: React.FC = () => {
     booking: BookingDetailResponse["data"],
     method: PaymentMethod = "CASH",
   ) {
-    const methodLabel =
-      method === "VNPAY"
-        ? "VNPay QR"
-        : method === "MOMO"
-          ? "MoMo QR"
-          : "Tiền mặt";
+    const methodLabel = method === "VNPAY" ? "VNPay QR" : "Tiền mặt";
     const ticketCodes =
       booking.tickets?.map((t) => t.ticket_code).filter(Boolean) || [];
 
@@ -1059,37 +1054,6 @@ const StaffPOS: React.FC = () => {
           title: "Đã tạo thanh toán VNPay",
           description:
             "Vui lòng cho khách quét mã QR VNPay hoặc nhấn Mở trang thanh toán để hoàn tất giao dịch.",
-        });
-      } else if (paymentMethod === "MOMO") {
-        const qrResponse = await apiCall<{
-          success: boolean;
-          data: { pay_url?: string; qr_code_url?: string };
-        }>(API_ENDPOINTS.MOMO_PAYMENT, {
-          method: "POST",
-          body: JSON.stringify({ booking_id: bookingId, is_pos: true }),
-        });
-
-        const qrCodeUrl = qrResponse.data?.qr_code_url;
-        const payUrl = qrResponse.data?.pay_url;
-        const generatedQrCode = payUrl
-          ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(payUrl)}`
-          : undefined;
-
-        paymentHandledRef.current = false;
-
-        setQrPayment({
-          bookingId,
-          bookingCode: createResponse.data?.booking_code || `#${bookingId}`,
-          payUrl,
-          qrCodeUrl,
-          generatedQrCode,
-          gateway: "MOMO",
-        });
-
-        toast({
-          title: "Đã tạo thanh toán MoMo",
-          description:
-            "Vui lòng cho khách quét mã QR MoMo. Hệ thống sẽ tự động xác nhận khi thanh toán thành công.",
         });
       } else {
         await apiCall(API_ENDPOINTS.CONFIRM_BOOKING(bookingId), {
@@ -1682,7 +1646,7 @@ const StaffPOS: React.FC = () => {
               <label className="text-sm font-medium">
                 Phương thức thanh toán
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -1717,24 +1681,6 @@ const StaffPOS: React.FC = () => {
                   </span>
                   <span>QR / Thẻ ATM</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPaymentMethod("MOMO");
-                    setQrPayment(null);
-                  }}
-                  className={cn(
-                    "rounded-lg border px-2.5 py-2 text-xs font-semibold flex flex-col items-center justify-center gap-1 transition-all",
-                    paymentMethod === "MOMO"
-                      ? "border-pink-600 bg-pink-50 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300 dark:border-pink-500 shadow-xs ring-1 ring-pink-500/20"
-                      : "border-border hover:bg-muted/50 text-muted-foreground",
-                  )}
-                >
-                  <span className="font-extrabold text-[13px] tracking-tight text-pink-600 dark:text-pink-400">
-                    MoMo
-                  </span>
-                  <span>Ví MoMo</span>
-                </button>
               </div>
 
               {paymentMethod === "CASH" && (
@@ -1751,35 +1697,12 @@ const StaffPOS: React.FC = () => {
             </div>
 
             {qrPayment && (
-              <div
-                className={cn(
-                  "rounded-xl border-2 p-4 space-y-3",
-                  qrPayment.gateway === "VNPAY"
-                    ? "border-blue-300 bg-blue-50/80 dark:bg-blue-950/30 dark:border-blue-800"
-                    : "border-pink-300 bg-pink-50/80 dark:bg-pink-950/30 dark:border-pink-800",
-                )}
-              >
+              <div className="rounded-xl border-2 p-4 space-y-3 border-blue-300 bg-blue-50/80 dark:bg-blue-950/30 dark:border-blue-800">
                 <div className="flex items-center justify-between">
-                  <p
-                    className={cn(
-                      "text-sm font-bold",
-                      qrPayment.gateway === "VNPAY"
-                        ? "text-blue-900 dark:text-blue-200"
-                        : "text-pink-900 dark:text-pink-200",
-                    )}
-                  >
-                    {qrPayment.gateway === "VNPAY"
-                      ? "💳 Thanh toán VNPay QR"
-                      : "📱 Thanh toán MoMo QR"}{" "}
-                    cho đơn {qrPayment.bookingCode}
+                  <p className="text-sm font-bold text-blue-900 dark:text-blue-200">
+                    💳 Thanh toán VNPay QR cho đơn {qrPayment.bookingCode}
                   </p>
-                  <Badge
-                    className={
-                      qrPayment.gateway === "VNPAY"
-                        ? "bg-blue-600"
-                        : "bg-pink-600"
-                    }
-                  >
+                  <Badge className="bg-blue-600">
                     Chờ thanh toán...
                   </Badge>
                 </div>
@@ -1790,18 +1713,17 @@ const StaffPOS: React.FC = () => {
                     <div className="text-center">
                       <img
                         src={qrPayment.generatedQrCode}
-                        alt={`QR thanh toán ${qrPayment.gateway}`}
+                        alt="QR thanh toán VNPay"
                         className="w-52 h-52 rounded-xl border-4 border-white shadow-lg bg-white p-2 mx-auto"
                       />
                       <p className="text-xs text-muted-foreground mt-2">
-                        Quét mã QR để thanh toán qua{" "}
-                        {qrPayment.gateway === "VNPAY" ? "VNPay" : "MoMo"}
+                        Quét mã QR để thanh toán qua VNPay
                       </p>
                     </div>
                   ) : qrPayment.qrCodeUrl ? (
                     <img
                       src={qrPayment.qrCodeUrl}
-                      alt={`QR thanh toán ${qrPayment.gateway}`}
+                      alt="QR thanh toán VNPay"
                       className="w-52 h-52 rounded-xl border-4 border-white shadow-lg bg-white p-2 mx-auto"
                     />
                   ) : null}
@@ -1823,15 +1745,9 @@ const StaffPOS: React.FC = () => {
                           }
                         }
                       }}
-                      className={cn(
-                        "inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white shadow-sm transition-all cursor-pointer",
-                        qrPayment.gateway === "VNPAY"
-                          ? "bg-blue-600 hover:bg-blue-700"
-                          : "bg-pink-600 hover:bg-pink-700",
-                      )}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white shadow-sm transition-all cursor-pointer bg-blue-600 hover:bg-blue-700"
                     >
-                      Mở cổng thanh toán{" "}
-                      {qrPayment.gateway === "VNPAY" ? "VNPay" : "MoMo"} ↗
+                      Mở cổng thanh toán VNPay ↗
                     </button>
                   </div>
                 )}
@@ -1979,9 +1895,7 @@ const StaffPOS: React.FC = () => {
                 ? "Đang xử lý..."
                 : paymentMethod === "CASH"
                   ? "Xác nhận tiền mặt + In bill"
-                  : paymentMethod === "VNPAY"
-                    ? "Tạo thanh toán VNPay QR"
-                    : "Tạo thanh toán MoMo QR"}
+                  : "Tạo thanh toán VNPay QR"}
             </Button>
             {isSubmitDisabled && (
               <p className="text-xs text-amber-700">{submitDisabledReason}</p>
@@ -1989,9 +1903,7 @@ const StaffPOS: React.FC = () => {
             <p className="text-xs text-muted-foreground">
               {paymentMethod === "CASH"
                 ? "Luồng tiền mặt: nhân viên xác nhận đã nhận đủ tiền, hệ thống xác nhận booking và in bill có mã QR vé."
-                : paymentMethod === "VNPAY"
-                  ? "Luồng VNPay: tạo mã QR VNPay để khách quét hoặc mở trang thanh toán; tự động hoàn tất và in bill sau khi thành công."
-                  : "Luồng MoMo: tạo mã QR MoMo; tự động hoàn tất và in bill sau khi thành công."}
+                : "Luồng VNPay: tạo mã QR VNPay để khách quét hoặc mở trang thanh toán; tự động hoàn tất và in bill sau khi thành công."}
             </p>
           </CardContent>
         </Card>

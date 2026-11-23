@@ -10,7 +10,7 @@
  */
 
 require_once __DIR__ . '/../config/Env.php';
-Env::load(__DIR__ . '/../.env');
+Env::load(dirname(__DIR__, 2) . '/.env');
 require_once __DIR__ . '/../config/Database.php';
 
 $reset = in_array('--reset', $argv ?? [], true);

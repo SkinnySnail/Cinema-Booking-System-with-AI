@@ -26,13 +26,6 @@ if [ -z "$KEY" ]; then
 fi
 export AI_SERVICE_KEY="$KEY"
 
-# Giữ backend/.env luôn khớp với .env (backend đọc file này khi chạy ngoài Docker).
-if grep -q '^AI_SERVICE_KEY=' backend/.env 2>/dev/null; then
-  sed -i "s|^AI_SERVICE_KEY=.*|AI_SERVICE_KEY=$KEY|" backend/.env
-else
-  printf '\nAI_SERVICE_KEY=%s\n' "$KEY" >> backend/.env
-fi
-
 case "${1:-start}" in
   start)
     # Sinh ảnh poster phim + ảnh bắp nước (gradient + typography, tránh bản quyền).

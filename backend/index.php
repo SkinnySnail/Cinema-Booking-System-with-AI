@@ -58,9 +58,9 @@ CorsMiddleware::handle();
 // Set content type
 header('Content-Type: application/json; charset=UTF-8');
 
-// Load .env before configs
+// Load root .env before configs (falls back cleanly if env vars are injected by Docker)
 require_once __DIR__ . '/config/Env.php';
-Env::load(__DIR__ . '/.env');
+Env::load(dirname(__DIR__) . '/.env');
 
 // Autoloader
 require_once __DIR__ . '/config/Database.php';
@@ -259,14 +259,11 @@ $router->get('/api/bookings/user/showtime/:userId/:showtimeId', 'BookingControll
 // ============================================
 $router->post('/api/transactions', 'TransactionController@create');
 $router->get('/api/transactions/booking/:bookingId', 'TransactionController@getByBooking');
-$router->post('/api/transactions/momo/verify', 'TransactionController@verifyMomo');
 $router->get('/api/transactions/vnpay/verify', 'TransactionController@verifyVNPay');
 $router->post('/api/transactions/vnpay/verify', 'TransactionController@verifyVNPay');
 $router->get('/api/transactions/vnpay/ipn', 'TransactionController@verifyVNPayIpn'); // VNPay gọi IPN bằng GET
 $router->post('/api/transactions/vnpay/ipn', 'TransactionController@verifyVNPayIpn');
-$router->get('/api/transactions/momo/verify', 'TransactionController@verifyMomo');
 $router->get('/api/transactions/user/:userId', 'TransactionController@getHistory');
-$router->post('/api/transactions/momo', 'TransactionController@createMoMoPayment');
 $router->post('/api/transactions/vnpay', 'TransactionController@createVNPayPayment');
 $router->post('/api/transactions/visa', 'TransactionController@createVisaPayment');
 $router->post('/api/transactions/cash', 'TransactionController@createCashPayment');

@@ -519,7 +519,7 @@ INSERT INTO booking_concessions (booking_id, concession_id, quantity, price) VAL
 
 -- Transaction cho booking 1
 INSERT INTO transactions (booking_id, payment_method, amount, transaction_code, status) VALUES
-(@booking_id, 'Momo', 255000, CONCAT('MOMO-', DATE_FORMAT(NOW(), '%Y%m%d'), '-', @booking_id), 'Success');
+(@booking_id, 'VNPay', 255000, CONCAT('VNPAY-', DATE_FORMAT(NOW(), '%Y%m%d'), '-', @booking_id), 'Success');
 
 -- Loyalty history cho booking 1 (Earn points: 180000 / 10000 = 18 points)
 INSERT INTO loyalty_history (user_id, points_change, type, description, related_booking_id) VALUES

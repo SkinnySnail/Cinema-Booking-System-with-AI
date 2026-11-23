@@ -57,15 +57,6 @@ export class TransactionService {
         return apiClient.get<TransactionDetailResponse>(API_ENDPOINTS.TRANSACTIONS.BY_BOOKING(bookingId));
     }
 
-    static async momoPayment(
-        data: PaymentRequest
-    ): Promise<ApiResponse<{ pay_url?: string; qr_code_url?: string }>> {
-        return apiClient.post<{ pay_url?: string; qr_code_url?: string }>(
-            API_ENDPOINTS.TRANSACTIONS.MOMO,
-            data
-        );
-    }
-
     static async vnpayPayment(data: PaymentRequest): Promise<ApiResponse<{ pay_url: string }>> {
         return apiClient.post<{ pay_url: string }>(API_ENDPOINTS.TRANSACTIONS.VNPAY, data);
     }

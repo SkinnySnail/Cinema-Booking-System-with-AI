@@ -18,7 +18,7 @@ export type BookingStatus =
   | "used"
   | "expired";
 
-export type PaymentMethod = "momo" | "atm" | "visa" | "cash";
+export type PaymentMethod = "atm" | "visa" | "cash";
 
 export type LoyaltyHistoryType = "PURCHASE" | "REDEEM" | "EVENT" | "BIRTHDAY";
 

@@ -67,7 +67,12 @@ services:
       - /app/node_modules
     environment:
       CHOKIDAR_USEPOLLING: "true"
-      VITE_API_URL: "http://localhost:${CINEMA_API_PORT:-8000}"
+      VITE_API_URL: "${VITE_API_URL:-http://localhost:8000}"
+      VITE_PUSHER_KEY: "${VITE_PUSHER_KEY:-}"
+      VITE_PUSHER_CLUSTER: "${VITE_PUSHER_CLUSTER:-ap1}"
+      VITE_MAPTILER_KEY: "${VITE_MAPTILER_KEY:-}"
+      VITE_ORS_API_KEY: "${VITE_ORS_API_KEY:-}"
+      VITE_ORS_API_KEY_2: "${VITE_ORS_API_KEY_2:-}"
       # Dev-server proxy target for /api, /index.php, /uploads (used via ngrok / LAN IP)
       VITE_PROXY_TARGET: "http://app:8000"
     ports:

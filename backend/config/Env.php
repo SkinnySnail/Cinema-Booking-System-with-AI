@@ -3,7 +3,11 @@
  * Simple .env loader
  */
 class Env {
-    public static function load($path) {
+    public static function load($path = null) {
+        $rootEnv = dirname(__DIR__, 2) . '/.env';
+        if ($path === null || !is_readable($path)) {
+            $path = $rootEnv;
+        }
         if (!is_readable($path)) {
             return;
         }
@@ -46,7 +50,7 @@ class Env {
                 $_SERVER[$key] = $value;
             }
 
-            // Define constants for keys like MOMO_PARTNER_CODE, VNP_HASH_SECRET, etc.
+            // Define constants for keys like VNP_TMNCODE, VNP_HASH_SECRET, etc.
             if (!defined($key) && preg_match('/^[A-Z0-9_]+$/', $key)) {
                 define($key, $value);
             }

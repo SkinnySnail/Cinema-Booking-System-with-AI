@@ -129,44 +129,21 @@ if (!$seatPairFound || !$bookingId) {
     exit(1);
 }
 
-$amount = $finalPrice ?: 0;
-$transactionRes = request(
+$cashRes = request(
     'POST',
-    rtrim($baseUrl, '/') . '/api/transactions',
+    rtrim($baseUrl, '/') . '/api/transactions/cash',
     [
         'booking_id' => $bookingId,
-        'payment_method' => 'Momo',
-        'amount' => $amount,
     ],
     $token
 );
 
-if (!isset($transactionRes['json']['success']) || $transactionRes['json']['success'] !== true) {
-    logLine('Transaction create failed: ' . ($transactionRes['json']['message'] ?? 'Unknown error'));
+if (!isset($cashRes['json']['success']) || $cashRes['json']['success'] !== true) {
+    logLine('Cash payment failed: ' . ($cashRes['json']['message'] ?? 'Unknown error'));
     exit(1);
 }
-
-$transactionCode = $transactionRes['json']['data']['transaction_code'] ?? null;
-if (!$transactionCode) {
-    logLine('Transaction code missing.');
-    exit(1);
-}
-logLine("Transaction created: {$transactionCode}");
-
-$verifyRes = request(
-    'POST',
-    rtrim($baseUrl, '/') . '/api/transactions/momo/verify',
-    [
-        'transaction_code' => $transactionCode,
-        'status' => 0,
-    ]
-);
-
-if (!isset($verifyRes['json']['success']) || $verifyRes['json']['success'] !== true) {
-    logLine('Verify MoMo failed: ' . ($verifyRes['json']['message'] ?? 'Unknown error'));
-    exit(1);
-}
-logLine('Payment verified successfully.');
+$transactionCode = $cashRes['json']['data']['transaction_code'] ?? null;
+logLine("Payment completed: {$transactionCode}");
 
 $bookingDetail = request('GET', rtrim($baseUrl, '/') . '/api/bookings/' . $bookingId, null, $token);
 if (!isset($bookingDetail['json']['success']) || $bookingDetail['json']['success'] !== true) {

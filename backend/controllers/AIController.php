@@ -391,7 +391,7 @@ class AIController extends BaseController {
             $reply='Mỗi '.number_format($rate,0,',','.').'đ thanh toán hợp lệ tương ứng 1 điểm. Xem hạng, điểm và voucher trong hồ sơ; điều kiện đổi quà hiển thị trước khi xác nhận.';
             $links=[['label'=>'Điểm và voucher của tôi','url'=>$uid?'/profile':'/login'],['label'=>'Khuyến mãi hiện tại','url'=>'/promotions']];
         } elseif($intent==='payment') {
-            $reply='Đặt vé trực tuyến hỗ trợ MoMo và VNPay. Tại quầy có thể thanh toán tiền mặt. Chỉ xác nhận thanh toán trên trang thanh toán chính thức; trợ lý không thu tiền hoặc xin mã OTP.';
+            $reply='Đặt vé trực tuyến hỗ trợ VNPay và thẻ Visa. Tại quầy có thể thanh toán tiền mặt hoặc VNPay. Chỉ xác nhận thanh toán trên trang thanh toán chính thức; trợ lý không thu tiền hoặc xin mã OTP.';
             $links[]=['label'=>'Kiểm tra đơn của tôi','url'=>$uid?'/bookings':'/login'];
         } elseif($intent==='cancel') {
             $reply='Mở Lịch sử đặt vé để xem trạng thái và thao tác được phép với từng đơn. Việc hủy hoặc hoàn vé phải được xác nhận tại màn hình tương ứng; trợ lý chưa thay đổi đơn của bạn.';

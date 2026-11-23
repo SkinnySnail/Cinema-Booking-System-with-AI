@@ -47,8 +47,6 @@ $backendEnvKeys = @(
     'JWT_SECRET', 'JWT_EXPIRATION',
     'SMTP_ENABLED', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_ENCRYPTION',
     'SMTP_USERNAME', 'SMTP_PASSWORD', 'SMTP_FROM_EMAIL', 'SMTP_FROM_NAME',
-    'MOMO_PARTNER_CODE', 'MOMO_ACCESS_KEY', 'MOMO_SECRET_KEY',
-    'MOMO_RETURN_URL', 'MOMO_NOTIFY_URL', 'MOMO_POS_RETURN_URL',
     'VNP_TMNCODE', 'VNP_HASH_SECRET', 'VNP_URL', 'VNPAY_RETURN_URL', 'VNPAY_NOTIFY_URL',
     'PUSHER_APP_ID', 'PUSHER_KEY', 'PUSHER_SECRET', 'PUSHER_CLUSTER',
     'AI_ENABLED', 'AI_SERVICE_URL', 'AI_SERVICE_KEY',
@@ -148,7 +146,7 @@ function Select-ActionFromMenu {
     Write-Host '  [6] Rebuild (sync env + build lai image + tao lai container, giu DB)'
     Write-Host '  [7] Reset tu dau (xoa container & DB volume, build + seed lai)'
     Write-Host '  [8] Status (xem trang thai cac container)'
-    Write-Host '  [9] Sync env only (chi dong bo 1 file env ra .env / backend / frontend)'
+    Write-Host '  [9] Sync env only (dong bo file env dau vao ve ./.env duy nhat)'
     Write-Host '  [0] Thoat'
     Write-Host '========================================================' -ForegroundColor Cyan
     $choice = (Read-Host 'Chon thao tac (0-9)').Trim()
@@ -175,16 +173,16 @@ function Resolve-InputEnvFile([string]$Requested) {
         }
         return $resolved
     }
-    $candidates = @('.env.all', '.env.local', '.env') | ForEach-Object { Join-Path $projectRoot $_ }
+    $candidates = @('.env', '.env.all', '.env.local') | ForEach-Object { Join-Path $projectRoot $_ }
     $found = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
     if (!$found) {
-        $targetAll = Join-Path $projectRoot '.env.all'
+        $targetEnv = Join-Path $projectRoot '.env'
         $examplePath = Join-Path $projectRoot '.env.example'
         if (Test-Path -LiteralPath $examplePath -PathType Leaf) {
-            Copy-Item -LiteralPath $examplePath -Destination $targetAll
-            throw "Chua co file env nao. Da tao mau tai '$targetAll' tu .env.example - hay dien cac key can thiet roi chay lai script."
+            Copy-Item -LiteralPath $examplePath -Destination $targetEnv
+            throw "Chua co file .env. Da tao mau tai '$targetEnv' tu .env.example - hay dien cac key can thiet roi chay lai script."
         }
-        throw 'Khong tim thay file .env.all, .env.local hoac .env.'
+        throw 'Khong tim thay file .env.'
     }
     return $found
 }
@@ -194,28 +192,16 @@ function Sync-ConsolidatedEnv([string]$SourceFile) {
     $inputEnv = Read-EnvMap $SourceFile
 
     $rootTarget = Join-Path $projectRoot '.env'
-    $backendTarget = Join-Path $projectRoot 'backend\.env'
-    $frontendTarget = Join-Path $projectRoot 'source-code\galaxy-cinema-hub-main\.env'
+    $allKnownKeys = @($rootEnvKeys + $backendEnvKeys + $frontendEnvKeys | Select-Object -Unique)
 
     $rootUpdates = [ordered]@{}
-    foreach ($k in $rootEnvKeys) {
+    foreach ($k in $allKnownKeys) {
         if ($inputEnv.Contains($k)) { $rootUpdates[$k] = $inputEnv[$k] }
     }
 
-    $backendUpdates = [ordered]@{}
-    foreach ($k in $backendEnvKeys) {
-        if ($inputEnv.Contains($k)) { $backendUpdates[$k] = $inputEnv[$k] }
-    }
-
-    $frontendUpdates = [ordered]@{}
-    foreach ($k in $frontendEnvKeys) {
-        if ($inputEnv.Contains($k)) { $frontendUpdates[$k] = $inputEnv[$k] }
-    }
-
     $existingRoot = Read-EnvMap $rootTarget
-    $existingBackend = Read-EnvMap $backendTarget
     $aiKey = ''
-    foreach ($candidateKey in @($inputEnv['AI_SERVICE_KEY'], $existingRoot['AI_SERVICE_KEY'], $existingBackend['AI_SERVICE_KEY'])) {
+    foreach ($candidateKey in @($inputEnv['AI_SERVICE_KEY'], $existingRoot['AI_SERVICE_KEY'])) {
         if ($candidateKey -and $candidateKey.Trim() -ne '') {
             $aiKey = $candidateKey.Trim()
             break
@@ -229,25 +215,27 @@ function Sync-ConsolidatedEnv([string]$SourceFile) {
         Write-Host '  Generated new AI_SERVICE_KEY.'
     }
     $rootUpdates['AI_SERVICE_KEY'] = $aiKey
-    $backendUpdates['AI_SERVICE_KEY'] = $aiKey
-    if (!$backendUpdates.Contains('AI_ENABLED') -and !$existingBackend.Contains('AI_ENABLED')) {
-        $backendUpdates['AI_ENABLED'] = 'true'
+    if (!$rootUpdates.Contains('AI_ENABLED') -and !$existingRoot.Contains('AI_ENABLED')) {
+        $rootUpdates['AI_ENABLED'] = 'true'
     }
 
-    if ($rootUpdates.Count -gt 0) {
-        Write-MergedEnvFile $rootTarget $rootUpdates '# Root env (synced by start-app.ps1; do not commit)'
-    }
-    if ($backendUpdates.Count -gt 0) {
-        Write-MergedEnvFile $backendTarget $backendUpdates '# Backend env (synced by start-app.ps1; do not commit)'
-    }
-    if ($frontendUpdates.Count -gt 0) {
-        Write-MergedEnvFile $frontendTarget $frontendUpdates '# Frontend Vite env (synced by start-app.ps1; do not commit)'
+    $frontendUpdated = $false
+    foreach ($fk in $frontendEnvKeys) {
+        if ($inputEnv.Contains($fk) -and $existingRoot[$fk] -ne $inputEnv[$fk]) {
+            $frontendUpdated = $true
+            break
+        }
     }
 
-    Write-Host '  Synced -> .env, backend/.env, source-code/galaxy-cinema-hub-main/.env'
+    $sameFile = ((Resolve-Path -LiteralPath $SourceFile).Path -ieq $rootTarget)
+    if (!$sameFile -or !$existingRoot.Contains('AI_SERVICE_KEY') -or $existingRoot['AI_SERVICE_KEY'] -ne $aiKey) {
+        Write-MergedEnvFile $rootTarget $rootUpdates '# Single consolidated .env (managed by start-app.ps1; do not commit)'
+    }
+
+    Write-Host '  Active env file -> ./.env'
     return @{
         AiKey           = $aiKey
-        FrontendUpdated = ($frontendUpdates.Count -gt 0)
+        FrontendUpdated = $frontendUpdated
     }
 }
 
@@ -437,7 +425,6 @@ try {
 
     $currentProjectName = (Split-Path -Leaf $projectRoot).ToLowerInvariant() -replace '[^a-z0-9_-]', ''
     $rootTarget = Join-Path $projectRoot '.env'
-    $backendTarget = Join-Path $projectRoot 'backend\.env'
 
     if ($Action -eq 'sync') {
         $sourceEnv = Resolve-InputEnvFile $EnvFile
@@ -481,7 +468,6 @@ try {
     if ($Action -eq 'start') {
         $docker = Ensure-DockerReady $true
         $effectiveRoot = Read-EnvMap $rootTarget
-        $effectiveBackend = Read-EnvMap $backendTarget
         $stack = Resolve-StackConfig $effectiveRoot $true
         $baseArgs = $stack.ComposeFiles + @('--profile', 'ai')
 
@@ -499,7 +485,7 @@ try {
             }
             & $docker @($baseArgs + @('start'))
             if ($LASTEXITCODE -ne 0) { throw 'Failed to start existing containers.' }
-            Wait-AndVerifyApp $docker $stack $effectiveRoot $effectiveBackend
+            Wait-AndVerifyApp $docker $stack $effectiveRoot $effectiveRoot
             return
         }
     }
@@ -516,7 +502,7 @@ try {
     $sourceEnv = Resolve-InputEnvFile $EnvFile
     $syncInfo = Sync-ConsolidatedEnv $sourceEnv
     $effectiveRoot = Read-EnvMap $rootTarget
-    $effectiveBackend = Read-EnvMap $backendTarget
+    $effectiveBackend = $effectiveRoot
 
     $docker = Ensure-DockerReady $true
     Stop-ConflictingRepoStack $docker $currentProjectName

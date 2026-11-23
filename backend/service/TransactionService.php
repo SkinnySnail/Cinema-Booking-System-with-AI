@@ -47,21 +47,15 @@ class TransactionService
 
     public function processGatewayVerification($gateway, $data)
     {
-        if ($gateway !== 'Momo' && $gateway !== 'VNPay') {
+        if ($gateway !== 'VNPay') {
             throw new Exception('Unsupported gateway for verification', 400);
         }
 
-        if ($gateway === 'Momo' && !PaymentService::verifyMomoPayment($data)) {
-            error_log('MoMo verify failed. Keys=' . implode(',', array_keys((array)$data)) . ' orderId=' . (string)($data['orderId'] ?? ''));
-            throw new Exception('MoMo signature verification failed', 400);
-        }
-
-        if ($gateway === 'VNPay' && !PaymentService::verifyVNPayPayment($data)) {
+        if (!PaymentService::verifyVNPayPayment($data)) {
             throw new Exception('VNPay signature verification failed', 400);
         }
 
         $transactionCode = $data['transaction_code']
-            ?? $data['orderId']
             ?? $data['vnp_TxnRef']
             ?? null;
 
@@ -86,16 +80,14 @@ class TransactionService
             ];
         }
 
-        // Số tiền cổng báo về phải khớp giao dịch (MoMo: VND, VNPay: VND × 100).
+        // Số tiền cổng báo về phải khớp giao dịch (VNPay: VND × 100).
         $expectedAmount = (int) round((float) ($transaction['amount'] ?? 0));
-        $reportedAmount = $gateway === 'VNPay'
-            ? (isset($data['vnp_Amount']) ? (int) $data['vnp_Amount'] / 100 : null)
-            : (isset($data['amount']) ? (int) $data['amount'] : null);
+        $reportedAmount = isset($data['vnp_Amount']) ? (int) $data['vnp_Amount'] / 100 : null;
         if ($reportedAmount !== null && (int) round($reportedAmount) !== $expectedAmount) {
             throw new Exception('Payment amount does not match the transaction', 400);
         }
 
-        $status = $data['status'] ?? $data['resultCode'] ?? $data['vnp_ResponseCode'] ?? null;
+        $status = $data['status'] ?? $data['vnp_ResponseCode'] ?? null;
         $isSuccess = $this->isSuccessStatus($gateway, $status);
         $newStatus = $isSuccess ? 'Success' : 'Failed';
 
@@ -222,7 +214,7 @@ class TransactionService
             // receives a new vnp_TxnRef and doesn't reject it as a duplicate.
             $prefix = strtoupper(preg_replace('/\s+/', '', $gateway));
             $newCode = $prefix . '-' . date('ymdHis') . '-' . substr(uniqid(), -6);
-            // Cập nhật cả cổng và số tiền: đơn có thể đã đổi ghế/voucher hoặc đổi từ MoMo sang VNPay.
+            // Cập nhật cả cổng và số tiền: đơn có thể đã đổi ghế/voucher hoặc đổi cổng thanh toán.
             $this->transactionModel->renewPending($transaction['transaction_code'], $newCode, $gateway, $amount);
             $transaction['transaction_code'] = $newCode;
             $transaction['amount'] = $amount;
@@ -235,29 +227,6 @@ class TransactionService
             $amount,
             $options
         );
-
-        if ($gateway === 'Momo') {
-            $momoPayment = PaymentService::createMoMoPayment(
-                $payload['amount'],
-                $payload['orderId'],
-                $payload['orderInfo'],
-                $payload['returnUrl'],
-                $payload['notifyUrl']
-            );
-
-            // Refresh transaction details (include updated fields)
-            $transaction = $this->transactionModel->getByBooking((int) $booking['id']);
-
-            $response = ['transaction' => $transaction];
-            if (!empty($momoPayment['pay_url'])) {
-                $response['pay_url'] = $momoPayment['pay_url'];
-            }
-            if (!empty($momoPayment['qr_code_url'])) {
-                $response['qr_code_url'] = $momoPayment['qr_code_url'];
-            }
-
-            return $response;
-        }
 
         if ($gateway === 'VNPay' || $gateway === 'Visa') {
             $bankCode = ($gateway === 'Visa') ? 'VNBANK' : '';
@@ -287,7 +256,7 @@ class TransactionService
      * Thanh toán tiền mặt tại quầy.
      *
      * Không cần cổng thanh toán online nên hoạt động ổn định ngay cả khi
-     * VNPay/MoMo sandbox bị lỗi (TmnCode bị vô hiệu hoá, mạng chặn, ...).
+     * VNPay sandbox bị lỗi (TmnCode bị vô hiệu hoá, mạng chặn, ...).
      * Giao dịch được ghi nhận thành công ngay và booking được confirm luôn:
      * vé -> SOLD, voucher -> USED, cộng điểm thành viên.
      */
@@ -363,11 +332,6 @@ class TransactionService
 
     private function isSuccessStatus($gateway, $status)
     {
-        if ($gateway === 'Momo') {
-            if ($status === 0 || $status === '0') {
-                return true;
-            }
-        }
         if ($gateway === 'VNPay') {
             if ($status === '00') {
                 return true;
@@ -383,26 +347,6 @@ class TransactionService
     private function buildPaymentPayload($gateway, $bookingId, $transactionCode, $amount, $options = [])
     {
         $baseUrl = $this->getBaseUrl();
-
-        if ($gateway === 'Momo') {
-            $isPos = !empty($options['is_pos']);
-            $notifyUrl = getenv('MOMO_NOTIFY_URL') ?: ($baseUrl . '/index.php/api/transactions/momo/verify');
-            // POS QR flow should not redirect customer phone to localhost/front-end dev URL.
-            if ($isPos) {
-                $returnUrl = getenv('MOMO_POS_RETURN_URL') ?: 'https://momo.vn/';
-            } else {
-                // Quay về backend để xác minh chữ ký + xác nhận đơn, sau đó backend chuyển sang
-                // FRONTEND_URL/booking/success|failed (giống VNPay).
-                $returnUrl = getenv('MOMO_RETURN_URL') ?: ($baseUrl . '/index.php/api/transactions/momo/verify');
-            }
-            return [
-                'amount' => $amount,
-                'orderId' => $transactionCode,
-                'orderInfo' => 'Payment_for_booking_' . $bookingId,
-                'returnUrl' => $returnUrl,
-                'notifyUrl' => $notifyUrl,
-            ];
-        }
 
         if ($gateway === 'VNPay' || $gateway === 'Visa') {
             $frontendUrl = getenv('APP_URL') ?: $baseUrl;

@@ -438,7 +438,6 @@ const ManagerTransactions: React.FC = () => {
                 <SelectContent>
                   <SelectItem value="all">Tất cả</SelectItem>
                   <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="momo">Momo</SelectItem>
                   <SelectItem value="vnpay">VNPay</SelectItem>
                   <SelectItem value="card">Card</SelectItem>
                 </SelectContent>
