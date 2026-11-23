@@ -49,7 +49,6 @@ ini_set('log_errors', 1);     // Log errors instead
 
 // Start output buffering to catch any unexpected output
 ob_start();
-file_put_contents(__DIR__ . '/debug_index_hit.txt', date('Y-m-d H:i:s') . ' - ' . $_SERVER['REQUEST_URI'] . "\n", FILE_APPEND);
 
 // Load and apply CORS middleware
 require_once __DIR__ . '/middleware/CorsMiddleware.php';

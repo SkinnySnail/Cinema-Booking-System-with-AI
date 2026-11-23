@@ -9,7 +9,8 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-galaxy_cinema}
       TZ: ${TZ:-Asia/Ho_Chi_Minh}
     ports:
-      - "${DB_PORT:-3307}:3306"
+      # Host port only; DB_PORT is the backend's connection port (3306 inside Docker).
+      - "${CINEMA_DB_PORT:-3307}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
@@ -40,7 +41,7 @@ services:
       DB_USERNAME: root
       DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
       DB_CHARSET: utf8mb4
-      # MySQL trong container nghe ở 3306. Port DB_PORT chỉ là mapping ra host.
+      # MySQL trong container nghe ở 3306. Cổng mở ra host là CINEMA_DB_PORT.
       DB_PORT: "3306"
     ports:
       - "${BACKEND_PORT:-8000}:8080"

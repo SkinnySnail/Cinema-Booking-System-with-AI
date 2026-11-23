@@ -43,3 +43,9 @@ source-code/galaxy-cinema-hub-main/TESTING_QUICKSTART.md
 
 # Tokens dumped by local scripts
 backend/scripts/admin_token.txt
+
+# Runtime/debug artifacts (never commit)
+backend/debug_index_hit.txt
+backend/debug_route_log.json
+backend/*.log
+**/*.timestamp-*.mjs

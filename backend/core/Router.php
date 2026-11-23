@@ -116,41 +116,18 @@ class Router
             }
         }
 
-        // No route found - include debug info temporarily
-        // TEMP DEBUG: Log all routes and match results
-        $debugRoutes = [];
-        foreach ($this->routes as $i => $r) {
-            $debugRoutes[] = [
-                'index' => $i,
-                'method' => $r['method'],
-                'path' => $r['path'],
-                'pattern' => $r['pattern'],
-                'matches_method' => ($r['method'] === $method),
-                'matches_uri' => (bool) preg_match($r['pattern'], $uri),
-            ];
-        }
-        $debugLog = [
-            'time' => date('Y-m-d H:i:s'),
-            'raw_request_uri' => $_SERVER['REQUEST_URI'],
-            'parsed_uri' => $uri,
-            'method' => $method,
-            'routes' => $debugRoutes
-        ];
-        file_put_contents(__DIR__ . '/../debug_route_log.json', json_encode($debugLog, JSON_PRETTY_PRINT));
-
+        // No route found. Routing details are only returned when APP_DEBUG=true,
+        // so production responses do not reveal request internals.
         http_response_code(404);
-        echo json_encode([
-            'success' => false,
-            'message' => 'Route not found',
-            'debug' => [
-                'raw_request_uri' => $_SERVER['REQUEST_URI'],
+        $body = ['success' => false, 'message' => 'Route not found'];
+        if (filter_var(getenv('APP_DEBUG'), FILTER_VALIDATE_BOOLEAN)) {
+            $body['debug'] = [
                 'parsed_uri' => $uri,
                 'method' => $method,
-                'server_script_name' => $_SERVER['SCRIPT_NAME'] ?? 'N/A',
-                'server_path_info' => $_SERVER['PATH_INFO'] ?? 'N/A',
                 'registered_routes_count' => count($this->routes),
-            ]
-        ]);
+            ];
+        }
+        echo json_encode($body);
         return;
     }
 

@@ -562,9 +562,9 @@ INSERT INTO roles (id, name, code, display_name, description, base_role, is_syst
 
 INSERT INTO memberships (id, rank_name, min_points_required, discount_rate) VALUES
 (1, 'Bronze', 0, 0.00),
-(2, 'Silver', 1000, 3.00),
-(3, 'Gold', 3000, 5.00),
-(4, 'Platinum', 7000, 8.00);
+(2, 'Silver', 2000, 5.00),
+(3, 'Gold', 5000, 10.00),
+(4, 'Platinum', 10000, 15.00);
 
 -- MODULE: MOVIES
 INSERT INTO permissions (name, display_name, description, module) VALUES
