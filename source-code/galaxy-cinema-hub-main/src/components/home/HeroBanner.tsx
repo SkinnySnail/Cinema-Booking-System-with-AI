@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Play, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AppContext";
 import { apiCall, API_ENDPOINTS, getImageUrl } from "@/lib/api";
 
 interface SlideData {
@@ -47,6 +48,7 @@ const defaultSlides: SlideData[] = [
 
 export const HeroBanner: React.FC<HeroBannerProps> = ({ slides: initialSlides }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [activeSlides, setActiveSlides] = useState<SlideData[]>(
     initialSlides || defaultSlides,
@@ -86,7 +88,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ slides: initialSlides })
     };
 
     fetchBanners();
-  }, [initialSlides]);
+  }, [initialSlides, user?.id, user?.dob, user?.role]);
 
   // Next / Prev navigation
   const nextSlide = useCallback(() => {

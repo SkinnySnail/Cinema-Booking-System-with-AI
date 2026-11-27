@@ -7,6 +7,7 @@ require_once __DIR__ . '/../core/Response.php';
 require_once __DIR__ . '/../utils/JWT.php';
 require_once __DIR__ . '/../utils/CloudinaryUploader.php';
 require_once __DIR__ . '/../config/Config.php';
+require_once __DIR__ . '/../service/ViewingPolicy.php';
 
 /**
  * MovieController
@@ -100,6 +101,17 @@ class MovieController
         $userRoleName = strtolower((string)($user['role'] ?? ''));
         return $userRoleId === 5 || $userRoleName === 'admin';
     }
+
+    /**
+     * Helper: Ẩn phim T18 đối với khán giả (Member) dưới 18 tuổi
+     */
+    private function shouldHideT18(): bool
+    {
+        return ViewingPolicy::shouldHideT18ForViewer(
+            Database::getInstance()->getConnection(),
+            $this->getCurrentUser()
+        );
+    }
     
     // ============================================
     // PUBLIC FUNCTIONS
@@ -126,6 +138,7 @@ class MovieController
             if (isset($_GET['origin'])) $filters['origin'] = $_GET['origin'];
             if (isset($_GET['genre_id'])) $filters['genre_id'] = (int)$_GET['genre_id'];
             if (isset($_GET['search'])) $filters['search'] = $_GET['search'];
+            if ($this->shouldHideT18()) $filters['exclude_t18'] = true;
 
             // Get movies
             $movies = $this->movieModel->getAll($filters, $page, $limit);
@@ -168,6 +181,10 @@ class MovieController
                 return Response::error('Không tìm thấy phim', 404);
             }
 
+            if ($this->shouldHideT18() && ViewingPolicy::isT18Rating($movie['age_rating'] ?? '')) {
+                return Response::error(ViewingPolicy::T18_RESTRICTED_MESSAGE, 403);
+            }
+
             return Response::success(['movie' => $movie]);
         } catch (Exception $e) {
             error_log("MovieController Show Error: " . $e->getMessage());
@@ -191,6 +208,10 @@ class MovieController
             $movie = $this->movieModel->getById($id);
             if (!$movie) {
                 return Response::error('Không tìm thấy phim', 404);
+            }
+
+            if ($this->shouldHideT18() && ViewingPolicy::isT18Rating($movie['age_rating'] ?? '')) {
+                return Response::error(ViewingPolicy::T18_RESTRICTED_MESSAGE, 403);
             }
 
             // Build filters
@@ -228,6 +249,10 @@ class MovieController
             $movie = $this->movieModel->getById($id);
             if (!$movie) {
                 return Response::error('Không tìm thấy phim', 404);
+            }
+
+            if ($this->shouldHideT18() && ViewingPolicy::isT18Rating($movie['age_rating'] ?? '')) {
+                return Response::error(ViewingPolicy::T18_RESTRICTED_MESSAGE, 403);
             }
 
             $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;

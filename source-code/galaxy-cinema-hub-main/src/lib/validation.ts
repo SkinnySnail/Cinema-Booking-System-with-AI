@@ -27,6 +27,37 @@ export function calculateAge(dob: string): number {
   return age;
 }
 
+export const T18_RESTRICTED_MESSAGE =
+  "Phim phân loại T18 không khả dụng cho khán giả dưới 18 tuổi.";
+
+export function isT18Rating(rating: string | undefined | null): boolean {
+  return String(rating ?? "").trim().toUpperCase() === "T18";
+}
+
+/**
+ * Ẩn phim T18 đối với khách hàng (role === "client") đã có ngày sinh < 18 tuổi.
+ * Admin / Manager / Staff luôn được xem để quản trị và bán vé tại quầy.
+ */
+export function shouldHideT18ForUser(
+  user: { role?: string; dob?: string } | null | undefined,
+): boolean {
+  if (!user || user.role !== "client" || !user.dob) {
+    return false;
+  }
+  const birthDate = new Date(user.dob);
+  if (Number.isNaN(birthDate.getTime()) || birthDate > new Date()) {
+    return false;
+  }
+  return calculateAge(user.dob) < 18;
+}
+
+export function isMovieVisibleToUser(
+  ageRating: string | undefined | null,
+  user: { role?: string; dob?: string } | null | undefined,
+): boolean {
+  return !(isT18Rating(ageRating) && shouldHideT18ForUser(user));
+}
+
 // Kiểm tra độ tuổi phù hợp với phim
 export function validateAge(
   userDOB: string | undefined,

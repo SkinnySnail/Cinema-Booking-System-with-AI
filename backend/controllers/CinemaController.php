@@ -6,6 +6,7 @@ require_once __DIR__ . '/../core/Response.php';
 require_once __DIR__ . '/../utils/JWT.php';
 require_once __DIR__ . '/../config/Config.php';
 require_once __DIR__ . '/../middleware/AuthMiddleware.php';
+require_once __DIR__ . '/../service/ViewingPolicy.php';
 
 /**
  * CinemaController
@@ -322,6 +323,9 @@ class CinemaController
             $filters = ['cinema_id' => $id];
             if (isset($_GET['date'])) {
                 $filters['date'] = $_GET['date'];
+            }
+            if (ViewingPolicy::shouldHideT18ForViewer(Database::getInstance()->getConnection(), $this->getCurrentUser())) {
+                $filters['exclude_t18'] = true;
             }
 
             $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;

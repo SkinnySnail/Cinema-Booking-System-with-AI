@@ -10,8 +10,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { useBooking } from "@/contexts/AppContext";
+import { useAuth, useBooking } from "@/contexts/AppContext";
 import { API_ENDPOINTS, API_BASE_URL, apiCall } from "@/lib/api";
+import { isMovieVisibleToUser } from "@/lib/validation";
 import { Showtime } from "@/types/cinema";
 
 interface Genre {
@@ -31,6 +32,7 @@ interface MovieFromAPI {
 
 const QuickBookingBar: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { setSelectedMovie, setSelectedCinema, setSelectedShowtime } =
     useBooking();
   const getLocalDateString = (d: Date) => {
@@ -101,12 +103,16 @@ const QuickBookingBar: React.FC = () => {
           url += `&genre_id=${genreId}`;
         }
 
-        const response = await fetch(url);
-        const data = await response.json();
+        const data = await apiCall<{
+          success: boolean;
+          data?: { movies?: any[] };
+        }>(url);
         if (data.success && data.data?.movies) {
-          // Strictly filter ONLY movies that have active showtimes
+          // Strictly filter ONLY movies that have active showtimes and are allowed for viewer age
           const activeOnly = data.data.movies.filter(
-            (m: any) => Number(m.active_showtimes_count || 0) > 0
+            (m: any) =>
+              Number(m.active_showtimes_count || 0) > 0 &&
+              isMovieVisibleToUser(m.age_rating, user),
           );
           setMoviesFromAPI(activeOnly);
         } else {
@@ -121,7 +127,7 @@ const QuickBookingBar: React.FC = () => {
     };
 
     fetchMovies();
-  }, [genreId]);
+  }, [genreId, user]);
 
   // Fetch cinemas from API
   useEffect(() => {

@@ -15,6 +15,9 @@ import {
   calculateShowtimeEnd,
   formatAgeRating,
   getAgeRatingColor,
+  isT18Rating,
+  shouldHideT18ForUser,
+  T18_RESTRICTED_MESSAGE,
 } from "@/lib/validation";
 import AgeWarningDialog from "@/components/booking/AgeWarningDialog";
 import CurfewWarningDialog from "@/components/booking/CurfewWarningDialog";
@@ -183,6 +186,17 @@ const SeatSelectionPage: React.FC = () => {
         }>(API_ENDPOINTS.MOVIE_DETAIL(parseInt(movieId)));
         if (response.success && response.data?.movie) {
           const m = response.data.movie;
+          const rating = normalizeAgeRating(m.age_rating || m.ageRating);
+          if (isT18Rating(rating) && shouldHideT18ForUser(user)) {
+            toast({
+              title: "Giới hạn độ tuổi (T18)",
+              description: T18_RESTRICTED_MESSAGE,
+              variant: "destructive",
+            });
+            clearBooking();
+            navigate("/movies", { replace: true });
+            return;
+          }
           setMovie({
             id: String(m.id),
             title: m.title,
@@ -194,16 +208,25 @@ const SeatSelectionPage: React.FC = () => {
                 : "",
             duration: m.duration || m.duration_minutes || 0,
             duration_minutes: m.duration_minutes || m.duration || 0,
-            age_rating: normalizeAgeRating(m.age_rating || m.ageRating),
-            ageRating: normalizeAgeRating(m.age_rating || m.ageRating),
+            age_rating: rating,
+            ageRating: rating,
           });
         }
       } catch (error) {
         console.error("Failed to fetch movie:", error);
+        if (error instanceof Error && /T18|18 tuổi/i.test(error.message)) {
+          toast({
+            title: "Giới hạn độ tuổi (T18)",
+            description: error.message,
+            variant: "destructive",
+          });
+          clearBooking();
+          navigate("/movies", { replace: true });
+        }
       }
     };
     fetchMovie();
-  }, [selectedMovie, searchParams]);
+  }, [selectedMovie, searchParams, user, toast, clearBooking, navigate]);
 
   // Tạo mã chữ cái cho hàng: A, B, C, ... Z, AA, AB, ...
   const getRowLetter = (index: number): string => {

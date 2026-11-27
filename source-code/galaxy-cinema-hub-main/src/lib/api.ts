@@ -257,7 +257,10 @@ export const apiCall = async <T = unknown>(
 
       // Better error handling for 403
       if (response.status === 403) {
-        throw new Error("Không có quyền truy cập. Vui lòng đăng nhập lại.");
+        throw new Error(
+          (typeof data?.message === "string" && data.message) ||
+            "Không có quyền truy cập. Vui lòng đăng nhập lại.",
+        );
       }
       throw new Error(
         (typeof data?.message === "string" ? data.message : null) ||

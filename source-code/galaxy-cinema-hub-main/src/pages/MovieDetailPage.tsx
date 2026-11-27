@@ -30,6 +30,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 import { API_ENDPOINTS, apiCall, getImageUrl } from "@/lib/api";
+import {
+  isT18Rating,
+  shouldHideT18ForUser,
+  T18_RESTRICTED_MESSAGE,
+} from "@/lib/validation";
 import { Movie, AgeRating, Showtime } from "@/types/cinema";
 import { useBooking, useAuth } from "@/contexts/AppContext";
 import { useToast } from "@/hooks/use-toast";
@@ -170,6 +175,9 @@ const MovieDetailPage: React.FC = () => {
 
   const [movie, setMovie] = useState<Movie | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ageRestrictedMessage, setAgeRestrictedMessage] = useState<
+    string | null
+  >(null);
   const getLocalDateString = (d: Date) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -219,6 +227,7 @@ const MovieDetailPage: React.FC = () => {
 
       try {
         setLoading(true);
+        setAgeRestrictedMessage(null);
         const response = await apiCall<{
           success: boolean;
           data: { movie: BackendMovie };
@@ -226,6 +235,11 @@ const MovieDetailPage: React.FC = () => {
 
         if (response.success && response.data?.movie) {
           const m = response.data.movie;
+          if (isT18Rating(m.age_rating) && shouldHideT18ForUser(user)) {
+            setMovie(null);
+            setAgeRestrictedMessage(T18_RESTRICTED_MESSAGE);
+            return;
+          }
           const castList = (m.cast || "")
             .split(",")
             .map((name) => name.trim())
@@ -252,18 +266,22 @@ const MovieDetailPage: React.FC = () => {
         }
       } catch (error) {
         console.error("Error fetching movie:", error);
+        setMovie(null);
+        if (error instanceof Error && /T18|18 tuổi/i.test(error.message)) {
+          setAgeRestrictedMessage(error.message);
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchMovie();
-  }, [id]);
+  }, [id, user]);
 
   // Fetch cinemas and showtimes from API
   useEffect(() => {
     const fetchCinemasAndShowtimes = async () => {
-      if (!id) return;
+      if (!id || !movie || ageRestrictedMessage) return;
 
       const toLocalYmd = (dateInput: string) => {
         const d = new Date(dateInput.replace(" ", "T"));
@@ -363,11 +381,11 @@ const MovieDetailPage: React.FC = () => {
     };
 
     fetchCinemasAndShowtimes();
-  }, [id, selectedDate, movie?.duration]);
+  }, [id, selectedDate, movie, ageRestrictedMessage]);
 
   // Fetch reviews
   const fetchReviews = async () => {
-    if (!id) return;
+    if (!id || !movie || ageRestrictedMessage) return;
 
     try {
       setLoadingReviews(true);
@@ -406,7 +424,7 @@ const MovieDetailPage: React.FC = () => {
   useEffect(() => {
     fetchReviews();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, movie?.id, ageRestrictedMessage]);
 
   if (loading) {
     return (
@@ -432,11 +450,25 @@ const MovieDetailPage: React.FC = () => {
         <Header />
         <main className="flex-1 flex items-center justify-center py-32">
           <div className="text-center p-8 max-w-md bg-card border border-border rounded-3xl shadow-sm">
-            <Film className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-            <h1 className="text-2xl font-bold mb-2">Không tìm thấy phim</h1>
-            <p className="text-muted-foreground text-sm mb-6">
-              Bộ phim bạn đang tìm kiếm không tồn tại hoặc đã ngừng chiếu.
-            </p>
+            {ageRestrictedMessage ? (
+              <>
+                <AlertTriangle className="w-16 h-16 text-rose-500 mx-auto mb-4" />
+                <h1 className="text-2xl font-bold mb-2">
+                  Giới hạn độ tuổi (T18)
+                </h1>
+                <p className="text-muted-foreground text-sm mb-6">
+                  {ageRestrictedMessage}
+                </p>
+              </>
+            ) : (
+              <>
+                <Film className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h1 className="text-2xl font-bold mb-2">Không tìm thấy phim</h1>
+                <p className="text-muted-foreground text-sm mb-6">
+                  Bộ phim bạn đang tìm kiếm không tồn tại hoặc đã ngừng chiếu.
+                </p>
+              </>
+            )}
             <Link to="/movies">
               <Button className="rounded-xl px-6 bg-primary hover:bg-primary/90 text-primary-foreground">
                 Xem danh sách phim

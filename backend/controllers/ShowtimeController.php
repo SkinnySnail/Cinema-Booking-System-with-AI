@@ -10,6 +10,7 @@ require_once __DIR__ . '/../core/Response.php';
 require_once __DIR__ . '/../utils/JWT.php';
 require_once __DIR__ . '/../config/Config.php';
 require_once __DIR__ . '/../middleware/AuthMiddleware.php';
+require_once __DIR__ . '/../service/ViewingPolicy.php';
 
 /**
  * ShowtimeController
@@ -92,6 +93,17 @@ class ShowtimeController
     }
 
     /**
+     * Helper: Ẩn suất chiếu phim T18 đối với khán giả (Member) dưới 18 tuổi
+     */
+    private function shouldHideT18(): bool
+    {
+        return ViewingPolicy::shouldHideT18ForViewer(
+            Database::getInstance()->getConnection(),
+            $this->getCurrentUser()
+        );
+    }
+
+    /**
      * Validate whether a movie can be scheduled at a specific start time.
      * Rules:
      * - movie age_rating must not be "C"
@@ -148,6 +160,8 @@ class ShowtimeController
                 $filters['movie_id'] = (int) $_GET['movie_id'];
             if (isset($_GET['hall_id']))
                 $filters['hall_id'] = (int) $_GET['hall_id'];
+            if ($this->shouldHideT18())
+                $filters['exclude_t18'] = true;
 
             $showtimes = $this->showtimeModel->getAll($filters, $page, $limit);
             $total = $this->showtimeModel->count($filters);
@@ -182,6 +196,10 @@ class ShowtimeController
 
             if (!$showtime) {
                 return Response::error('Không tìm thấy suất chiếu', 404);
+            }
+
+            if ($this->shouldHideT18() && ViewingPolicy::isT18Rating($showtime['age_rating'] ?? '')) {
+                return Response::error(ViewingPolicy::T18_RESTRICTED_MESSAGE, 403);
             }
 
             return Response::success([
@@ -436,6 +454,10 @@ class ShowtimeController
                 return Response::error('Không tìm thấy suất chiếu', 404);
             }
 
+            if ($this->shouldHideT18() && ViewingPolicy::isT18Rating($showtime['age_rating'] ?? '')) {
+                return Response::error(ViewingPolicy::T18_RESTRICTED_MESSAGE, 403);
+            }
+
             $availableSeats = $this->showtimeModel->getAvailableSeats($id);
 
             // Tính giá cho từng ghế dựa trên pricing rules
@@ -484,6 +506,10 @@ class ShowtimeController
             $showtime = $this->showtimeModel->getById($id);
             if (!$showtime) {
                 return Response::error('Không tìm thấy suất chiếu', 404);
+            }
+
+            if ($this->shouldHideT18() && ViewingPolicy::isT18Rating($showtime['age_rating'] ?? '')) {
+                return Response::error(ViewingPolicy::T18_RESTRICTED_MESSAGE, 403);
             }
 
             $hallId = $showtime['cinema_hall_id'];
@@ -594,6 +620,11 @@ class ShowtimeController
             $userId = $_REQUEST['auth_user_id'] ?? null;
             if (!$userId) {
                 return Response::error('Unauthorized', 401);
+            }
+
+            $showtime = $this->showtimeModel->getById($id);
+            if ($showtime && $this->shouldHideT18() && ViewingPolicy::isT18Rating($showtime['age_rating'] ?? '')) {
+                return Response::error(ViewingPolicy::T18_RESTRICTED_MESSAGE, 403);
             }
 
             $data = json_decode(file_get_contents('php://input'), true);

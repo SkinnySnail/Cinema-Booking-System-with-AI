@@ -17,7 +17,9 @@ import {
   Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AppContext";
 import { API_ENDPOINTS, apiCall, getImageUrl } from "@/lib/api";
+import { isMovieVisibleToUser } from "@/lib/validation";
 import { Movie, AgeRating, calculateMovieStatus } from "@/types/cinema";
 import MovieCard from "@/components/movie/MovieCard";
 import Header from "@/components/layout/Header";
@@ -32,6 +34,7 @@ function extractYouTubeId(url?: string | null): string | null {
 }
 
 export const SearchPage: React.FC = () => {
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const searchQuery = searchParams.get("q") || "";
   const [movies, setMovies] = useState<Movie[]>([]);
@@ -53,11 +56,15 @@ export const SearchPage: React.FC = () => {
           url += `&search=${encodeURIComponent(searchQuery)}`;
         }
 
-        const response = await fetch(url);
-        const data = await response.json();
+        const data = await apiCall<{
+          success: boolean;
+          data?: { movies?: any[] };
+        }>(url);
 
         if (data.success && data.data?.movies) {
-          const mapped: Movie[] = data.data.movies.map((m: any) => {
+          const mapped: Movie[] = data.data.movies
+            .filter((m: any) => isMovieVisibleToUser(m.age_rating, user))
+            .map((m: any) => {
             const statusType = calculateMovieStatus(
               m.active_showtimes_count,
               m.release_date
@@ -95,7 +102,7 @@ export const SearchPage: React.FC = () => {
     };
 
     fetchMovies();
-  }, [searchQuery]);
+  }, [searchQuery, user]);
 
   // Open trailer modal
   const handleOpenTrailer = (e: React.MouseEvent, trailerUrl?: string) => {

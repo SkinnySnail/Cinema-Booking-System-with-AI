@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AppContext";
 import { getImageUrl } from "@/lib/api";
+import { isMovieVisibleToUser } from "@/lib/validation";
 import { aiService, type Recommendations } from "@/services/ai.service";
 
 export default function RecommendationsSection({ movieId, cinemaId }: { movieId?: number; cinemaId?: number }) {
@@ -11,9 +12,16 @@ export default function RecommendationsSection({ movieId, cinemaId }: { movieId?
   useEffect(() => {
     let active = true;
     setData(null);
-    aiService.recommendations(movieId, cinemaId).then(result => { if (active) setData(result); }).catch(() => {});
+    aiService.recommendations(movieId, cinemaId).then(result => {
+      if (active) {
+        setData({
+          ...result,
+          movies: result.movies.filter(movie => isMovieVisibleToUser(movie.age_rating, user)),
+        });
+      }
+    }).catch(() => {});
     return () => { active = false; };
-  }, [user?.id, movieId, cinemaId]);
+  }, [user, movieId, cinemaId]);
   if (!data || (!data.movies.length && !data.concessions.length)) return null;
   return (
     <section className="container mx-auto px-4 py-8" aria-label="Gợi ý dành cho bạn">

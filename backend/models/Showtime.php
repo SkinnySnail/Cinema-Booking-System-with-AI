@@ -90,6 +90,10 @@ class Showtime
                 $params[':hall_id'] = $filters['hall_id'];
             }
 
+            if (!empty($filters['exclude_t18'])) {
+                $sql .= " AND UPPER(COALESCE(m.age_rating, '')) <> 'T18'";
+            }
+
             $sql .= " ORDER BY s.start_time ASC LIMIT :limit OFFSET :offset";
 
             $stmt = $this->db->prepare($sql);
@@ -142,6 +146,10 @@ class Showtime
             if (!empty($filters['hall_id'])) {
                 $sql .= " AND s.cinema_hall_id = :hall_id";
                 $params[':hall_id'] = $filters['hall_id'];
+            }
+
+            if (!empty($filters['exclude_t18'])) {
+                $sql .= " AND UPPER(COALESCE(m.age_rating, '')) <> 'T18'";
             }
 
             $stmt = $this->db->prepare($sql);

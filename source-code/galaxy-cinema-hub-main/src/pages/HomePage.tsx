@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AppContext";
 import { API_ENDPOINTS, apiCall, getImageUrl } from "@/lib/api";
+import { isMovieVisibleToUser } from "@/lib/validation";
 import { Movie, AgeRating, calculateMovieStatus } from "@/types/cinema";
 import {
   Loader2,
@@ -34,13 +35,14 @@ interface BackendMovie {
 }
 
 const HomePage: React.FC = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchMovies();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.dob, user?.role]);
 
   const fetchMovies = async () => {
     try {
@@ -53,7 +55,9 @@ const HomePage: React.FC = () => {
       });
 
       if (response.success && response.data?.movies) {
-        const mappedMovies: Movie[] = response.data.movies.map((m: any) => {
+        const mappedMovies: Movie[] = response.data.movies
+          .filter((m) => isMovieVisibleToUser(m.age_rating, user))
+          .map((m: any) => {
           const statusType = calculateMovieStatus(
             m.active_showtimes_count,
             m.release_date,

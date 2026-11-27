@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { API_ENDPOINTS, apiCall, getImageUrl } from "@/lib/api";
+import { isMovieVisibleToUser } from "@/lib/validation";
 import { useAuth, useBooking } from "@/contexts/AppContext";
 import { useToast } from "@/hooks/use-toast";
 import { Showtime } from "@/types/cinema";
@@ -161,7 +162,7 @@ const SchedulePage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { setSelectedMovie, setSelectedShowtime } = useBooking();
 
   const getLocalDateString = (d: Date) => {
@@ -235,7 +236,10 @@ const SchedulePage: React.FC = () => {
           success: boolean;
           data: { showtimes: ShowtimeAPI[] };
         }>(`${API_ENDPOINTS.SHOWTIMES}?${params.toString()}`);
-        setShowtimes(response.data?.showtimes || []);
+        const visibleShowtimes = (response.data?.showtimes || []).filter((st) =>
+          isMovieVisibleToUser(st.age_rating, user),
+        );
+        setShowtimes(visibleShowtimes);
       } catch (error) {
         console.error("Failed to fetch showtimes:", error);
         toast({
@@ -250,7 +254,7 @@ const SchedulePage: React.FC = () => {
     };
 
     fetchShowtimes();
-  }, [selectedDate, selectedCinema, toast]);
+  }, [selectedDate, selectedCinema, toast, user]);
 
   const getDayName = (date: Date) => {
     const days = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];

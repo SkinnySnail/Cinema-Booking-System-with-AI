@@ -5,6 +5,7 @@ require_once __DIR__ . '/../middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../core/Response.php';
 require_once __DIR__ . '/../utils/JWT.php';
 require_once __DIR__ . '/../config/Config.php';
+require_once __DIR__ . '/../service/ViewingPolicy.php';
 
 /**
  * ReviewController
@@ -131,6 +132,13 @@ class ReviewController {
             $movie = $this->movieModel->getById($movieId);
             if (!$movie) {
                 return Response::error('Không tìm thấy phim', 404);
+            }
+
+            if (
+                ViewingPolicy::isT18Rating($movie['age_rating'] ?? '')
+                && ViewingPolicy::shouldHideT18ForViewer(Database::getInstance()->getConnection(), $this->getCurrentUser())
+            ) {
+                return Response::error(ViewingPolicy::T18_RESTRICTED_MESSAGE, 403);
             }
             
             $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;

@@ -1,10 +1,12 @@
 <?php
 require_once __DIR__ . '/../models/Poster.php';
+require_once __DIR__ . '/../models/Movie.php';
 require_once __DIR__ . '/../core/Response.php';
 require_once __DIR__ . '/../middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../utils/JWT.php';
 require_once __DIR__ . '/../utils/CloudinaryUploader.php';
 require_once __DIR__ . '/../config/Config.php';
+require_once __DIR__ . '/../service/ViewingPolicy.php';
 
 class PosterController
 {
@@ -74,6 +76,24 @@ class PosterController
                 $posters = $this->posterModel->getAll();
             } else {
                 $posters = $this->posterModel->getActive();
+                if (ViewingPolicy::shouldHideT18ForViewer(Database::getInstance()->getConnection(), $this->getCurrentUser())) {
+                    $movieModel = new Movie();
+                    $t18Cache = [];
+                    $posters = array_values(array_filter($posters, function ($poster) use ($movieModel, &$t18Cache) {
+                        $targetUrl = (string)($poster['target_url'] ?? '');
+                        if (preg_match('/\/movies?\/(\d+)/i', $targetUrl, $matches)) {
+                            $movieId = (int)$matches[1];
+                            if (!array_key_exists($movieId, $t18Cache)) {
+                                $movie = $movieModel->getById($movieId);
+                                $t18Cache[$movieId] = $movie && ViewingPolicy::isT18Rating($movie['age_rating'] ?? '');
+                            }
+                            if ($t18Cache[$movieId]) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }));
+                }
             }
 
             // Convert is_active to bool for JSON frontend

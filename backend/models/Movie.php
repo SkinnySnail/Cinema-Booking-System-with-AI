@@ -62,6 +62,11 @@ class Movie {
                 $query .= " AND m.title LIKE :search";
                 $params[':search'] = '%' . $filters['search'] . '%';
             }
+
+            // Exclude T18 movies for viewers under 18
+            if (!empty($filters['exclude_t18'])) {
+                $query .= " AND UPPER(COALESCE(m.age_rating, '')) <> 'T18'";
+            }
             
             $query .= " GROUP BY m.id, m.title, m.description, m.duration_minutes,
                        m.release_date, m.poster_url, m.trailer_url, m.age_rating,
@@ -118,6 +123,10 @@ class Movie {
             if (!empty($filters['search'])) {
                 $query .= " AND m.title LIKE :search";
                 $params[':search'] = '%' . $filters['search'] . '%';
+            }
+
+            if (!empty($filters['exclude_t18'])) {
+                $query .= " AND UPPER(COALESCE(m.age_rating, '')) <> 'T18'";
             }
             
             $stmt = $this->db->prepare($query);

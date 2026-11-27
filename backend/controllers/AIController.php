@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../service/ViewingPolicy.php';
+
 class AIController extends BaseController {
     private $db;
     private $data;
@@ -17,11 +19,26 @@ class AIController extends BaseController {
     }
     public function recommendations() {
         $uid=$this->viewer();
+        $hideT18=ViewingPolicy::shouldHideT18ForViewer($this->db);
         $limit=max(1,min(12,(int)($_GET['limit'] ?? 6)));
-        Response::success($this->recommend($uid,(int)($_GET['movie_id'] ?? 0),$limit,isset($_GET['cinema_id'])?(int)$_GET['cinema_id']:null));
+        $seed=(int)($_GET['movie_id'] ?? 0);
+        if ($hideT18 && $seed > 0) {
+            $stmt=$this->db->prepare('SELECT age_rating FROM movies WHERE id=? LIMIT 1');
+            $stmt->execute([$seed]);
+            if (ViewingPolicy::isT18Rating($stmt->fetchColumn())) {
+                $seed=0;
+            }
+        }
+        Response::success($this->recommend($uid,$seed,$limit,isset($_GET['cinema_id'])?(int)$_GET['cinema_id']:null,[],[],[],[],$hideT18));
     }
-    private function recommend(int $uid,int $seed=0,int $limit=6,?int $cinemaId=null,array $genreIds=[],array $excludedGenreIds=[],array $preferredGenreIds=[],array $allowedAgeRatings=[]): array {
+    private function recommend(int $uid,int $seed=0,int $limit=6,?int $cinemaId=null,array $genreIds=[],array $excludedGenreIds=[],array $preferredGenreIds=[],array $allowedAgeRatings=[],bool $excludeT18=false): array {
         $snapshot=$this->data->snapshot($uid,$seed,$limit,$cinemaId);
+        if ($excludeT18) {
+            $snapshot['movies']=array_values(array_filter(
+                $snapshot['movies'],
+                fn($m)=>!ViewingPolicy::isT18Rating($m['age_rating'] ?? '')
+            ));
+        }
         if ($allowedAgeRatings) {
             foreach ($snapshot['movies'] as &$movie) {
                 $rating = strtoupper(trim((string)($movie['age_rating'] ?? '')));
@@ -148,12 +165,13 @@ class AIController extends BaseController {
             'links'=>$links, 'model'=>$result['mode']];
     }
 
-    private function chatShows(string $day,int $movieId,int $cinemaId,array $parsed,array $genreIds,array $excludedGenreIds,array $preferredGenreIds,int $limit,int $excludedCinemaId=0,array $allowedAgeRatings=[]): array {
+    private function chatShows(string $day,int $movieId,int $cinemaId,array $parsed,array $genreIds,array $excludedGenreIds,array $preferredGenreIds,int $limit,int $excludedCinemaId=0,array $allowedAgeRatings=[],bool $excludeT18=false): array {
         $sql="SELECT s.id,s.movie_id,s.start_time,m.title,m.age_rating,c.name AS cinema_name,h.name AS hall_name,
             (SELECT GROUP_CONCAT(mg.genre_id) FROM movie_genres mg WHERE mg.movie_id=m.id) AS genre_ids FROM showtimes s
             JOIN movies m ON m.id=s.movie_id JOIN cinema_halls h ON h.id=s.cinema_hall_id JOIN cinemas c ON c.id=h.cinema_id
             WHERE s.start_time>NOW() AND s.start_time>=? AND s.start_time<? AND m.age_rating<>'C' AND m.status<>'Ended' AND LOWER(c.status)='active'";
         $params=[$day.' 00:00:00',(new DateTimeImmutable($day))->modify('+1 day')->format('Y-m-d').' 00:00:00'];
+        if($excludeT18){$sql.=" AND UPPER(COALESCE(m.age_rating,''))<>'T18'";}
         if($movieId){$sql.=' AND m.id=?';$params[]=$movieId;}
         if($cinemaId){$sql.=' AND c.id=?';$params[]=$cinemaId;}
         if($excludedCinemaId){$sql.=' AND c.id<>?';$params[]=$excludedCinemaId;}
@@ -179,15 +197,15 @@ class AIController extends BaseController {
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    private function scheduleAlternatives(array $range, int $movieId, int $cinemaId, array $parsed, array $genreIds, array $excludedGenreIds, array $preferredGenreIds, int $limit, array $allowedAgeRatings=[]): array {
+    private function scheduleAlternatives(array $range, int $movieId, int $cinemaId, array $parsed, array $genreIds, array $excludedGenreIds, array $preferredGenreIds, int $limit, array $allowedAgeRatings=[], bool $excludeT18=false): array {
         foreach (ChatSchedulePolicy::nearbyDates($range) as $date) {
-            $shows = $this->chatShows($date, $movieId, $cinemaId, $parsed, $genreIds, $excludedGenreIds, $preferredGenreIds, $limit, 0, $allowedAgeRatings);
+            $shows = $this->chatShows($date, $movieId, $cinemaId, $parsed, $genreIds, $excludedGenreIds, $preferredGenreIds, $limit, 0, $allowedAgeRatings, $excludeT18);
             if ($shows) return ['changed' => 'date', 'shows' => $shows];
         }
         if ($cinemaId) {
             $lastDate = new DateTimeImmutable($range['to']);
             for ($day = new DateTimeImmutable($range['from']); $day <= $lastDate; $day = $day->modify('+1 day')) {
-                $shows = $this->chatShows($day->format('Y-m-d'), $movieId, 0, $parsed, $genreIds, $excludedGenreIds, $preferredGenreIds, $limit, $cinemaId, $allowedAgeRatings);
+                $shows = $this->chatShows($day->format('Y-m-d'), $movieId, 0, $parsed, $genreIds, $excludedGenreIds, $preferredGenreIds, $limit, $cinemaId, $allowedAgeRatings, $excludeT18);
                 if ($shows) return ['changed' => 'cinema', 'shows' => $shows];
             }
         }
@@ -216,9 +234,14 @@ class AIController extends BaseController {
 
     public function chat() {
         $uid=$this->viewer(); $input=self::getRequestData();
+        $hideT18=ViewingPolicy::shouldHideT18ForViewer($this->db);
         $message=is_string($input['message'] ?? null) ? trim($input['message']) : '';
         if (!preg_match('/^.{1,1000}$/us', $message)) Response::validationError(['message'=>'Nhập câu hỏi từ 1 đến 1000 ký tự.']);
-        $movies=$this->data->movies(); $cinemas=$this->data->cinemas(); $genres=$this->data->genres();
+        $movies=$this->data->movies();
+        if ($hideT18) {
+            $movies=array_values(array_filter($movies,fn($m)=>!ViewingPolicy::isT18Rating($m['age_rating'] ?? '')));
+        }
+        $cinemas=$this->data->cinemas(); $genres=$this->data->genres();
         $chatSettings=ChatSchedulePolicy::settings((new SystemConfig())->getAll());
         try {
             $parsed=$this->client->request('/chat',['message'=>$message,'movies'=>array_map(fn($m)=>['id'=>(int)$m['id'],'title'=>$m['title']],$movies),
@@ -243,11 +266,15 @@ class AIController extends BaseController {
         $excludedGenreIds=array_values(array_filter(array_unique(array_map('intval',$parsed['excluded_genre_ids'] ?? [])),fn($id)=>isset($genreCatalog[$id])));
         $audience=in_array($parsed['audience'] ?? null,['couple','kids','family'],true) ? $parsed['audience'] : null;
         $couple=$audience==='couple';
-        $validRatings=['P','K','T13','T16','T18'];
-        $allowedAgeRatings=array_values(array_unique(array_filter(
-            array_map(fn($r)=>strtoupper(trim((string)$r)), is_array($parsed['allowed_age_ratings'] ?? null) ? $parsed['allowed_age_ratings'] : []),
-            fn($r)=>in_array($r,$validRatings,true)
+        $validRatings=$hideT18 ? ['P','K','T13','T16'] : ['P','K','T13','T16','T18'];
+        $rawAllowedRatings=array_values(array_unique(array_filter(
+            array_map(fn($r)=>strtoupper(trim((string)$r)), is_array($parsed['allowed_age_ratings'] ?? null) ? $parsed['allowed_age_ratings'] : [])
         )));
+        $requestedOnlyT18=$hideT18 && $rawAllowedRatings && count(array_diff($rawAllowedRatings, ['T18'])) === 0;
+        $allowedAgeRatings=array_values(array_filter(
+            $rawAllowedRatings,
+            fn($r)=>in_array($r,$validRatings,true)
+        ));
         if (!$allowedAgeRatings && in_array($audience,['kids','family'],true)) {
             $allowedAgeRatings=['P','K'];
         }
@@ -288,7 +315,10 @@ class AIController extends BaseController {
         $groups=[];
         $alternatives=[];
         $showReasons = $chatSettings['ai_chat_show_reasons'] === '1';
-        if ($intent==='sentiment') {
+        if ($requestedOnlyT18) {
+            $reply=ViewingPolicy::T18_RESTRICTED_MESSAGE.' Bạn có thể xem các phim phù hợp với độ tuổi của mình.';
+            $links=[['label'=>'Danh sách phim phù hợp','url'=>'/movies'],['label'=>'Xem lịch chiếu','url'=>'/schedule']];
+        } elseif ($intent==='sentiment') {
             $result=$this->chatSentiment((string)($parsed['review_text'] ?? ''));
             $reply=$result['reply']; $model=$result['model'] ?? null; $available=$result['ai_available'] ?? true;
         } elseif ($intent==='forecast' && !$cinemaId) {
@@ -298,7 +328,7 @@ class AIController extends BaseController {
             $shows=[];
             for ($cursor=new DateTimeImmutable($day);$cursor<=new DateTimeImmutable($until);$cursor=$cursor->modify('+1 day')) {
                 $date=$cursor->format('Y-m-d');
-                $rows=$this->chatShows($date,$movieId,$cinemaId,$parsed,$genreIds,$effectiveExcludedGenreIds,$preferredGenreIds,$perDay+1,0,$allowedAgeRatings);
+                $rows=$this->chatShows($date,$movieId,$cinemaId,$parsed,$genreIds,$effectiveExcludedGenreIds,$preferredGenreIds,$perDay+1,0,$allowedAgeRatings,$hideT18);
                 $more=count($rows)>$perDay;
                 $rows=array_slice($rows,0,$perDay);
                 if ($couple && $day!==$until && $intent!=='forecast') $rows=$this->coupleShowtimes($rows,$preferredGenreIds,(bool)$genreIds)['shows'];
@@ -348,7 +378,7 @@ class AIController extends BaseController {
                 if($intent==='booking' && !$uid) $reply.=' Vui lòng đăng nhập trước khi chọn ghế và thanh toán.';
             }
             if (!$shows && $intent !== 'forecast' && $chatSettings['ai_chat_empty_result_policy'] === 'suggest_alternatives') {
-                $alternatives = $this->scheduleAlternatives($range, $movieId, $cinemaId, $parsed, $genreIds, $effectiveExcludedGenreIds, $preferredGenreIds, min(3, $perDay), $allowedAgeRatings);
+                $alternatives = $this->scheduleAlternatives($range, $movieId, $cinemaId, $parsed, $genreIds, $effectiveExcludedGenreIds, $preferredGenreIds, min(3, $perDay), $allowedAgeRatings, $hideT18);
                 if ($alternatives) {
                     $reply .= $alternatives['changed'] === 'date' ? "\n\nBạn có thể đổi sang ngày gần nhất có suất phù hợp." : "\n\nBạn có thể xem tại rạp khác trong khoảng ngày đã chọn.";
                     foreach ($alternatives['shows'] as $show) {
@@ -359,7 +389,7 @@ class AIController extends BaseController {
             }
             $links[]=['label'=>'Xem toàn bộ lịch chiếu','url'=>'/schedule'];
         } elseif($intent==='recommend') {
-            $recommended=$this->recommend($uid,$movieId,6,$cinemaId ?: null,$genreIds,$effectiveExcludedGenreIds,$preferredGenreIds,$allowedAgeRatings);
+            $recommended=$this->recommend($uid,$movieId,6,$cinemaId ?: null,$genreIds,$effectiveExcludedGenreIds,$preferredGenreIds,$allowedAgeRatings,$hideT18);
             $reply=$recommended['movies'] ? 'Bạn có thể tham khảo các phim'.$preference.' dưới đây. Mở phim để xem suất chiếu và chọn ghế.' : 'Chưa có phim'.$preference.' phù hợp đang mở bán. Bạn có thể xem lại lịch chiếu sau.';
             $model=$recommended['model']; $available=$recommended['ai_available'];
             if ($couple && $showReasons) {

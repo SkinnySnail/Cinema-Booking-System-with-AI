@@ -15,7 +15,9 @@ import { Input } from "@/components/ui/input";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import MovieCard from "@/components/movie/MovieCard";
+import { useAuth } from "@/contexts/AppContext";
 import { API_ENDPOINTS, apiCall, getImageUrl } from "@/lib/api";
+import { isMovieVisibleToUser } from "@/lib/validation";
 import { Movie, AgeRating, calculateMovieStatus } from "@/types/cinema";
 
 interface BackendMovie {
@@ -36,6 +38,7 @@ interface BackendMovie {
 type FilterType = "all" | "now-showing" | "coming-soon" | "no-showtimes";
 
 const MoviesPage: React.FC = () => {
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const initialFilter: FilterType =
     searchParams.get("type") === "coming" ? "coming-soon" : "all";
@@ -58,7 +61,9 @@ const MoviesPage: React.FC = () => {
         }>(API_ENDPOINTS.MOVIES);
 
         if (response.success && response.data?.movies) {
-          const mappedMovies: Movie[] = response.data.movies.map((movie) => {
+          const mappedMovies: Movie[] = response.data.movies
+            .filter((movie) => isMovieVisibleToUser(movie.age_rating, user))
+            .map((movie) => {
             const statusType = calculateMovieStatus(
               movie.active_showtimes_count,
               movie.release_date,
@@ -97,7 +102,7 @@ const MoviesPage: React.FC = () => {
     };
 
     fetchMovies();
-  }, []);
+  }, [user]);
 
   const nowShowingMovies = useMemo(
     () => movies.filter((m) => m.statusType === "now-showing"),
