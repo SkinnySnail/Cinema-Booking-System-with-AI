@@ -1,8 +1,9 @@
- <?php
+<?php
 require_once __DIR__ . '/../models/UserVoucher.php';
 require_once __DIR__ . '/../models/Promotion.php';
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../models/LoyaltyHistory.php';
+require_once __DIR__ . '/../middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../core/Response.php';
 require_once __DIR__ . '/../config/Database.php';
 
@@ -24,10 +25,64 @@ class VoucherController {
         $this->userModel = new User();
     }
 
+    private function isAdminOrManager(): bool {
+        $roleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
+        $roleName = strtolower(trim((string)($_REQUEST['auth_user_role'] ?? '')));
+        return in_array($roleId, [4, 5], true) || in_array($roleName, ['admin', 'manager'], true);
+    }
+
+    private function isPrivilegedStaff(): bool {
+        if ($this->isAdminOrManager()) {
+            return true;
+        }
+        $roleId = (int)($_REQUEST['auth_user_role_id'] ?? $_REQUEST['auth_role_id'] ?? 0);
+        $roleName = strtolower(trim((string)($_REQUEST['auth_user_role'] ?? '')));
+        return $roleId === 3 || $roleName === 'staff';
+    }
+
+    private function authorizeOwnerOrManager(int $targetUserId): int {
+        AuthMiddleware::authenticate();
+        $authUserId = (int)($_REQUEST['auth_user_id'] ?? 0);
+        if ($authUserId <= 0) {
+            Response::unauthorized('Vui lòng đăng nhập');
+        }
+        if ($authUserId !== $targetUserId && !$this->isAdminOrManager()) {
+            Response::forbidden('Bạn không có quyền truy cập voucher của tài khoản khác');
+        }
+        return $authUserId;
+    }
+
+    /**
+     * Đồng bộ current_points sau khi INSERT vào loyalty_history:
+     * Trigger after_loyalty_insert đã tự cộng/trừ users.current_points;
+     * chỉ fallback UPDATE nếu DB môi trường test không cài trigger.
+     */
+    private function resolvePointsAfterHistoryInsert(PDO $db, int $userId, int $beforePoints, int $expectedTotal): int {
+        $stmt = $db->prepare("SELECT current_points FROM users WHERE id = :id LIMIT 1");
+        $stmt->execute([':id' => $userId]);
+        $afterPoints = (int)$stmt->fetchColumn();
+
+        if ($afterPoints === $beforePoints && $expectedTotal !== $beforePoints) {
+            $updateStmt = $db->prepare("UPDATE users SET current_points = :points WHERE id = :id");
+            if (!$updateStmt->execute([':points' => $expectedTotal, ':id' => $userId])) {
+                throw new RuntimeException('Không thể cập nhật điểm hiện tại');
+            }
+            return $expectedTotal;
+        }
+
+        return $afterPoints;
+    }
+
     public function getUserVouchers($userId) {
+        $targetUserId = (int)$userId;
+        if ($targetUserId <= 0) {
+            return Response::error('User ID không hợp lệ', 400);
+        }
+        $this->authorizeOwnerOrManager($targetUserId);
+
         // Support ?status=all to fetch all vouchers (for profile history)
         $status = isset($_GET['status']) && $_GET['status'] === 'all' ? null : 'ACTIVE';
-        $v = $this->voucherModel->getByUser($userId, $status);
+        $v = $this->voucherModel->getByUser($targetUserId, $status);
         return Response::success(['vouchers' => $v]);
     }
 
@@ -73,12 +128,19 @@ class VoucherController {
      */
     public function redeemPoints() {
         try {
-            $data = json_decode(file_get_contents('php://input'), true);
-            $userId = $data['user_id'] ?? null;
+            AuthMiddleware::authenticate();
+            $authUserId = (int)($_REQUEST['auth_user_id'] ?? 0);
+
+            $data = json_decode(file_get_contents('php://input'), true) ?: [];
+            $userId = isset($data['user_id']) ? (int)$data['user_id'] : $authUserId;
             $promoCode = $data['promotion_code'] ?? null;
 
-            if (!$userId || !$promoCode) {
+            if ($userId <= 0 || !$promoCode) {
                 return Response::error('Missing user_id or promotion_code', 400);
+            }
+
+            if ($userId !== $authUserId && !$this->isAdminOrManager()) {
+                return Response::forbidden('Bạn chỉ có thể đổi điểm cho tài khoản của chính mình');
             }
 
             $pointsRequired = self::$rewardPointsMap[$promoCode] ?? null;
@@ -111,9 +173,9 @@ class VoucherController {
                 return Response::error("Bạn cần $pointsRequired điểm nhưng chỉ có $currentPoints điểm", 400);
             }
 
-            $newTotal = $currentPoints - $pointsRequired;
+            $expectedTotal = $currentPoints - $pointsRequired;
 
-            // Append loyalty log (audit only).
+            // Append loyalty log (trigger after_loyalty_insert automatically updates users.current_points).
             $historyStmt = $db->prepare(
                 "INSERT INTO loyalty_history (user_id, points_change, type, description)\n                 VALUES (:user_id, :points_change, 'REDEEM', :description)"
             );
@@ -127,16 +189,7 @@ class VoucherController {
                 return Response::error('Không thể ghi lịch sử đổi điểm', 500);
             }
 
-            // Update wallet-like point balance directly from current_points.
-            $updatePointStmt = $db->prepare("UPDATE users SET current_points = :points WHERE id = :id");
-            $pointUpdated = $updatePointStmt->execute([
-                ':points' => $newTotal,
-                ':id' => $userId,
-            ]);
-            if (!$pointUpdated) {
-                $db->rollBack();
-                return Response::error('Không thể cập nhật điểm hiện tại', 500);
-            }
+            $newTotal = $this->resolvePointsAfterHistoryInsert($db, $userId, $currentPoints, $expectedTotal);
 
             // Recalculate membership tier after point deduction
             try {
@@ -179,6 +232,9 @@ class VoucherController {
 
     public function show($id) {
         try {
+            AuthMiddleware::authenticate();
+            $authUserId = (int)($_REQUEST['auth_user_id'] ?? 0);
+
             $db = Database::getInstance()->getConnection();
             $query = "SELECT uv.*, p.code as promo_code, p.description, p.discount_amount, p.discount_type, p.min_order_value, p.start_date, p.end_date, p.is_auto_apply FROM user_vouchers uv JOIN promotions p ON uv.promotion_id = p.id WHERE uv.id = :id LIMIT 1";
             $stmt = $db->prepare($query);
@@ -186,6 +242,11 @@ class VoucherController {
             $stmt->execute();
             $voucher = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$voucher) return Response::error('Voucher not found', 404);
+
+            if ((int)$voucher['user_id'] !== $authUserId && !$this->isAdminOrManager()) {
+                return Response::forbidden('Bạn không có quyền xem voucher này');
+            }
+
             return Response::success(['voucher' => $voucher]);
         } catch (Exception $e) {
             return Response::error('Lỗi: '.$e->getMessage(), 500);
@@ -194,6 +255,8 @@ class VoucherController {
 
     public function assignToUser() {
         try {
+            AuthMiddleware::requireManager();
+
             $data = json_decode(file_get_contents('php://input'), true);
             $userId = $data['user_id'] ?? null;
             $promotionId = $data['promotion_id'] ?? null;
@@ -208,11 +271,23 @@ class VoucherController {
 
     public function applyVoucher() {
         try {
-            $data = json_decode(file_get_contents('php://input'), true);
+            AuthMiddleware::authenticate();
+            $authUserId = (int)($_REQUEST['auth_user_id'] ?? 0);
+
+            $data = json_decode(file_get_contents('php://input'), true) ?: [];
             $voucherId = $data['voucher_id'] ?? null;
             $amount = $data['amount'] ?? 0;
             $code = $data['code'] ?? null;
-            $userId = $data['user_id'] ?? null;
+            $requestedUserId = isset($data['user_id']) && $data['user_id'] !== '' ? (int)$data['user_id'] : null;
+
+            if ($this->isPrivilegedStaff()) {
+                $userId = $requestedUserId;
+            } else {
+                if ($requestedUserId !== null && $requestedUserId !== $authUserId) {
+                    return Response::forbidden('Bạn không có quyền áp dụng voucher của tài khoản khác');
+                }
+                $userId = $authUserId;
+            }
 
             if (!$amount) return Response::error('Missing amount', 400);
 
@@ -410,12 +485,16 @@ class VoucherController {
     }
 
     public function markAsUsed($voucherId) {
+        AuthMiddleware::requireManager();
         $ok = $this->voucherModel->markAsUsed($voucherId);
         if (!$ok) return Response::error('Could not mark voucher as used', 500);
         return Response::success(['marked' => true]);
     }
 
     public function autoAssignBirthday() {
+        if (PHP_SAPI !== 'cli') {
+            AuthMiddleware::requireManager();
+        }
         // Find birthday users and assign configured birthday promotion(s)
         $users = $this->voucherModel->checkBirthdayUsers();
         if (empty($users)) return Response::success(['assigned' => 0]);

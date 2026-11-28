@@ -893,7 +893,7 @@ class Booking {
 
     public function applyVoucherDiscount($userVoucherId, $userId, $total) {
         $stmt = $this->db->prepare(
-            "SELECT uv.id, uv.status, p.code AS promo_code, p.discount_amount, p.discount_type, p.min_order_value, p.start_date, p.end_date
+            "SELECT uv.id, uv.status, p.code AS promo_code, p.discount_amount, p.discount_type, p.min_order_value, p.max_discount, p.start_date, p.end_date
              FROM user_vouchers uv
              JOIN promotions p ON uv.promotion_id = p.id
              WHERE uv.id = :id AND uv.user_id = :user_id"
@@ -953,11 +953,14 @@ class Booking {
         $discount = 0;
         if ($voucher['discount_type'] === 'PERCENT') {
             $discount = $total * ((float)$voucher['discount_amount'] / 100);
+            if (!empty($voucher['max_discount']) && (float)$voucher['max_discount'] > 0 && $discount > (float)$voucher['max_discount']) {
+                $discount = (float)$voucher['max_discount'];
+            }
         } else {
             $discount = (float)$voucher['discount_amount'];
         }
 
-        return min($discount, $total);
+        return round(min($discount, $total), 2);
     }
 
     private function getShowtime($showtimeId) {
